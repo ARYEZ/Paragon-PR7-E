@@ -117,7 +117,9 @@ namespace effects
                 std::vector<std::int64_t> holdIndex;
                 std::int64_t holdFront = 0, holdBack = 0;   // a monotonic queue: the moving minimum
                 double boxSum = 0.0;
-                float fast = 1.0f, slowDb = 0.0f, memory = 0.0f;
+                float fast = 1.0f, slowDb = 0.0f, memory = 0.0f, meanSquare = 0.0f;
+                float sustainedDb = 0.0f, windowLeast = 1.0f;   // the usual reduction (see process)
+                int windowCount = 0;
                 TruePeakDetector detector;
             };
 

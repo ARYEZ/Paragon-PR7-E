@@ -607,3 +607,45 @@ TEST_CASE ("Limiter: its heaviest settings still run comfortably in real time", 
     CHECK (fraction < 0.25);
 }
 
+
+TEST_CASE ("Limiter: after a kick, a dense mix comes straight back up (it doesn't pump), except in PUNCHY and GLUE", "[limit]")
+{
+    // 0.16.0 pumped: on a mix limited all the time, each kick's extra dip
+    // lingered for a quarter of a second (the owner heard it in every
+    // style). Kicks every 500 ms over a loud 2-8 kHz noise bed, GAIN +8 dB:
+    // the bed is limited a little all the time, and more under each kick.
+    juce::AudioBuffer<float> mix (2, 48000 * 4);
+    juce::Random random (3);
+    juce::dsp::IIR::Filter<float> hp (juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, 2000.0f));
+    juce::dsp::IIR::Filter<float> lp (juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, 8000.0f));
+    for (int i = 0; i < mix.getNumSamples(); ++i)
+    {
+        const auto t = (double) (i % 24000) / sampleRate;
+        const auto kick = (float) (0.7 * std::exp (-t * 30.0) * std::sin (juce::MathConstants<double>::twoPi * 60.0 * t));
+        const auto bed = 0.55f * lp.processSample (hp.processSample (random.nextFloat() * 2.0f - 1.0f));
+        mix.setSample (0, i, kick + bed);
+        mix.setSample (1, i, kick + bed);
+    }
+    // The bed's level (above 1.5 kHz, where the kick isn't) over a stretch after the last kick.
+    const auto bedDb = [] (const juce::AudioBuffer<float>& b, int fromMs, int toMs)
+    {
+        juce::dsp::IIR::Filter<float> f1 (juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, 1500.0f));
+        juce::dsp::IIR::Filter<float> f2 (juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate, 1500.0f));
+        const auto from = 72000 + 48 + fromMs * 48, to = 72000 + 48 + toMs * 48;   // after the 1 ms look-ahead
+        double sum = 0.0;
+        for (int i = from - 4800; i < to; ++i)
+            if (const auto y = f2.processSample (f1.processSample (b.getSample (0, i))); i >= from)
+                sum += (double) y * y;
+        return 10.0 * std::log10 (sum / (to - from));
+    };
+    for (const auto style : newStyles)
+    {
+        if (style == Style::punchy || style == Style::glue)
+            continue;   // they pump a little on purpose
+        INFO ("style " << (int) style);
+        const auto out = through (settings (style, 8.0f, -1.0f), mix);
+        const auto usual = bedDb (out, 240, 480);   // limited as the bed alone needs
+        CHECK (bedDb (out, 80, 120) - usual > -1.2);
+        CHECK (bedDb (out, 120, 240) - usual > -0.7);
+    }
+}

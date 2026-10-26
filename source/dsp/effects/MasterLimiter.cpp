@@ -75,30 +75,32 @@ namespace effects
             Character c;
             switch (style)
             {
-                // Clear: stays out of the way: the release stage takes some of
-                // the work, the transient stage lets go smoothly and slows
-                // down under sustained limiting, so it doesn't pump.
-                case Style::clear:      c = { 0.4f,  0.0f,  80.0f, 6.0f,  false, false }; break;
-                // Punchy: the release stage does most of the work and lets go
-                // quickly: audible, a little pumping, a lot of punch.
-                case Style::punchy:     c = { 0.8f,  0.0f,  20.0f, 2.0f,  false, false }; break;
+                // (0.16.1: less pumping all round. The release stage follows the
+                // average level, not each peak, and takes less of the work; the
+                // transient stage lets go sooner, slowing down only under
+                // limiting that goes on and on.)
+                // Clear: stays out of the way.
+                case Style::clear:      c = { 0.3f,  0.0f,  40.0f, 4.0f,  false, false }; break;
+                // Punchy: the release stage does more of the work: a little
+                // pumping, on purpose, for punch.
+                case Style::punchy:     c = { 0.6f,  0.0f,  20.0f, 2.0f,  false, false }; break;
                 // Dynamic: lifts transients (up to 4 dB, by how far a hit
                 // stands above the level just before it) before limiting, so
                 // the hits keep their attack.
-                case Style::dynamic:    c = { 0.4f,  0.0f,  60.0f, 5.0f,  true,  false }; break;
+                case Style::dynamic:    c = { 0.3f,  0.0f,  35.0f, 4.0f,  true,  false }; break;
                 // All-round: between Clear and Punchy, easing in 1.5 dB under the ceiling.
-                case Style::allRound:   c = { 0.55f, 1.5f,  50.0f, 5.0f,  false, false }; break;
+                case Style::allRound:   c = { 0.4f,  1.5f,  30.0f, 4.0f,  false, false }; break;
                 // Aggressive: a soft clipper rounds off the top 2 dB first; the
                 // limiter quickly catches the rest. Loud and edgy.
-                case Style::aggressive: c = { 0.25f, 0.0f,  12.0f, 3.0f,  false, true  }; break;
+                case Style::aggressive: c = { 0.2f,  0.0f,  12.0f, 2.0f,  false, true  }; break;
                 // Modern: lets go fast after a lone peak (louder, cleaner with
-                // little look-ahead) and slowly under sustained limiting.
-                case Style::modern:     c = { 0.5f,  0.0f,  25.0f, 12.0f, false, false }; break;
+                // little look-ahead) and slower under sustained limiting.
+                case Style::modern:     c = { 0.3f,  0.0f,  20.0f, 6.0f,  false, false }; break;
                 // Glue: the release stage starts 6 dB under the ceiling, as a
-                // bus compressor would: glue, not transparency.
-                case Style::glue:       c = { 0.7f,  6.0f,  35.0f, 2.0f,  false, false }; break;
-                // Safe: slow, smooth recovery so it never distorts; not as loud.
-                case Style::safe:       c = { 0.7f,  0.0f, 200.0f, 3.0f,  false, false }; break;
+                // bus compressor would: glue (and some pumping), not transparency.
+                case Style::glue:       c = { 0.6f,  6.0f,  30.0f, 2.0f,  false, false }; break;
+                // Safe: slower, smooth recovery so it doesn't distort; not as loud.
+                case Style::safe:       c = { 0.4f,  0.0f,  60.0f, 4.0f,  false, false }; break;
                 case Style::brick: case Style::soft: case Style::autoRelease: break;
             }
             return c;
@@ -173,6 +175,10 @@ namespace effects
                 c.fast = 1.0f;
                 c.slowDb = 0.0f;
                 c.memory = 0.0f;
+                c.meanSquare = 0.0f;
+                c.sustainedDb = 0.0f;
+                c.windowLeast = 1.0f;
+                c.windowCount = 0;
                 c.detector.reset();
             }
             written = 0;
@@ -186,7 +192,12 @@ namespace effects
             const auto window = lookahead + 1;
             const auto delay = (std::int64_t) getDelay();
             const auto& character = p.character;
-            const auto memoryCoefficient = coefficientFor (sampleRate, 1000.0f);
+            // How long limiting has gone on: rising over half a second of it, falling in 150 ms without.
+            const auto memoryRise = coefficientFor (sampleRate, 500.0f), memoryFall = coefficientFor (sampleRate, 150.0f);
+            const auto averageCoefficient = coefficientFor (sampleRate, 100.0f);
+            const auto windowLength = juce::jmax (1, (int) (0.02 * sampleRate));
+            const auto deeperCoefficient = 1.0f - std::exp (-20.0f / 1000.0f);     // per 20 ms window: 1 s
+            const auto shallowerCoefficient = 1.0f - std::exp (-20.0f / 300.0f);   // 300 ms
             const auto boostAttack = coefficientFor (sampleRate, 0.5f), boostRelease = coefficientFor (sampleRate, 40.0f);
             const auto boostSlowAttack = coefficientFor (sampleRate, 15.0f), boostSlowRelease = coefficientFor (sampleRate, 250.0f);
             const auto clipKnee = p.ceiling * 0.7943282f, clipTop = p.ceiling * 1.2589254f;   // 2 dB either side
@@ -222,7 +233,11 @@ namespace effects
                     {
                         auto& channel = channels[(size_t) c];
                         float over = 0.0f;
-                        if (const auto level = std::abs (z[(size_t) c]); level > from)
+                        // The average level (100 ms, as the peak a steady wave of
+                        // that power would have), so a lone hit barely moves it.
+                        const auto x2 = z[(size_t) c] * z[(size_t) c];
+                        channel.meanSquare += (x2 - channel.meanSquare) * averageCoefficient;
+                        if (const auto level = std::sqrt (2.0f * channel.meanSquare); level > from)
                         {
                             const auto x = toDb (level) - thresholdDb;
                             over = knee <= 0.0f      ? juce::jmax (0.0f, x)
@@ -290,16 +305,36 @@ namespace effects
                     oldest = held;
                     const auto boxed = juce::jmin (1.0f, (float) (channel.boxSum / (double) window));
 
+                    // How much the music needs turning down as a rule (0.16.1): the
+                    // deepest reduction of each 20 ms, smoothed: slowly deeper (1 s,
+                    // so a hit hardly moves it), back quicker (300 ms). A dense
+                    // mix sits at that level; a kick goes deeper for a moment.
+                    channel.windowLeast = juce::jmin (channel.windowLeast, boxed);
+                    if (++channel.windowCount >= windowLength)
+                    {
+                        const auto windowDb = -toDb (channel.windowLeast);
+                        channel.sustainedDb += (windowDb - channel.sustainedDb) * (windowDb > channel.sustainedDb ? deeperCoefficient : shallowerCoefficient);
+                        channel.windowLeast = 1.0f;
+                        channel.windowCount = 0;
+                    }
+
                     // Recovery: never above what's needed (it only rises towards it).
+                    // Back up to the usual level quickly, whatever the music: so
+                    // a hit's extra dip doesn't linger (that's pumping). Only around
+                    // the usual level, under limiting that goes on and on, slower
+                    // (less distortion there).
                     if (boxed < channel.fast)
                         channel.fast = boxed;
                     else
                     {
-                        const auto releaseMs = character.fastReleaseMs * p.fastReleaseScale * (1.0f + character.adapt * channel.memory);
+                        const auto deeper = -toDb (channel.fast) > channel.sustainedDb + 0.5f;
+                        const auto releaseMs = character.fastReleaseMs * p.fastReleaseScale * (deeper ? 1.0f : 1.0f + character.adapt * channel.memory);
                         channel.fast += (boxed - channel.fast) * coefficientFor (sampleRate, releaseMs);
                     }
                     const auto fastDb = -toDb (channel.fast);
-                    channel.memory += (juce::jmin (1.0f, fastDb / 6.0f) - channel.memory) * memoryCoefficient;
+                    // Only limiting that goes on and on slows the recovery (less distortion
+                    // there); separate hits, however hard, keep it quick (no pumping).
+                    channel.memory += fastDb > 0.5f ? (1.0f - channel.memory) * memoryRise : -channel.memory * memoryFall;
 
                     const auto out = channel.delayLine[(size_t) ((written - delay + capacity) % capacity)];
                     data[(size_t) c][i] = out * channel.fast;
@@ -540,9 +575,9 @@ namespace effects
             {
                 auto q = p;
                 q.character = postCharacter();
-                // A hair under the ceiling (0.1 dB): for what this stage's own gain
+                // A hair under the ceiling (0.12 dB): for what this stage's own gain
                 // changes add, and a peak the detector's 8 points miss (under 0.2 dB).
-                q.ceilingDb = p.ceilingDb - (s.truePeak ? 0.1f : 0.0f);
+                q.ceilingDb = p.ceilingDb - (s.truePeak ? 0.12f : 0.0f);
                 q.ceiling = toGain (q.ceilingDb);
                 std::array<float, 2> more {};
                 post.process (work.getWritePointer (0), numChannels == 2 ? work.getWritePointer (1) : nullptr, numSamples, q, more);
