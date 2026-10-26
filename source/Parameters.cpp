@@ -3,6 +3,7 @@
 #include "dsp/effects/MultibandComp.h"
 
 #include "dsp/dominion/Dominion.h"
+#include "dsp/effects/MasterLimiter.h"
 #include "dsp/eq/Dynamics.h"
 #include "dsp/eq/EqDesign.h"
 
@@ -279,11 +280,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (makeSwitch (ParamIDs::limitOn, "Limiter", v32, false));
     layout.add (makeFloat (ParamIDs::limitThreshold, "Limit Threshold", { ParamRanges::limitThresholdMin, 0.0f, 0.1f }, -1.0f, v32, asDb));
     layout.add (makeFloat (ParamIDs::limitMakeUp, "Limit Make Up", { 0.0f, ParamRanges::limitMakeUpMax, 0.1f }, 0.0f, v32, asDb));
-    layout.add (makeChoice (ParamIDs::limitMode, "Limit Mode", v32, ParamRanges::limitModes, 0));
+    layout.add (makeChoice (ParamIDs::limitMode, "Limit Style", v32, ParamRanges::limitModes, ParamRanges::limitDefaultMode));
     layout.add (makeFloat (ParamIDs::limitMix, "Limit Mix", { 0.0f, 100.0f, 1.0f }, 100.0f, v32,
                            [] (float v, int) { return juce::String (juce::roundToInt (v)) + "%"; }));
     layout.add (makeSwitch (ParamIDs::limitLink, "Limit Link", v32, true));
     layout.add (makeFloat (ParamIDs::limitTrim, "Output Trim", { ParamRanges::limitTrimMin, ParamRanges::limitTrimMax, 0.1f }, 0.0f, v32, asDb));
+
+    // ...and from 0.16.0, after Pro-L 2 (see effects::MasterLimiter).
+    {
+        constexpr int v36 = 36;
+        const ToText percent = [] (float v, int) { return juce::String (juce::roundToInt (v)) + "%"; };
+        const ToText ms = [] (float v, int) { return v < 10.0f ? juce::String (v, 2) + " ms" : v < 1000.0f ? juce::String (juce::roundToInt (v)) + " ms"
+                                                                                                : juce::String (v / 1000.0f, 2) + " s"; };
+        layout.add (makeFloat (ParamIDs::limitGain, "Limit Gain", { 0.0f, ParamRanges::limitGainMax, 0.01f }, 0.0f, v36, asDb));
+        layout.add (makeFloat (ParamIDs::limitCeiling, "Limit Output", { ParamRanges::limitCeilingMin, 0.0f, 0.01f }, -1.0f, v36, asDb));
+        layout.add (makeFloat (ParamIDs::limitLookahead, "Limit Lookahead", { 0.0f, effects::limiter::maxLookaheadMs, 0.01f, 0.5f }, 1.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitAttack, "Limit Attack", logRange (0.5, 500.0), 20.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitRelease, "Limit Release", logRange (10.0, 5000.0), 250.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitLinkTransient, "Limit Link Transients", { 0.0f, 100.0f, 1.0f }, 75.0f, v36, percent));
+        layout.add (makeFloat (ParamIDs::limitLinkRelease, "Limit Link Release", { 0.0f, 100.0f, 1.0f }, 100.0f, v36, percent));
+        layout.add (makeSwitch (ParamIDs::limitTruePeak, "Limit True Peak", v36, false));
+        layout.add (makeChoice (ParamIDs::limitOversampling, "Limit Oversampling", v36, effects::limiter::oversamplingNames, 0));
+        layout.add (makeChoice (ParamIDs::limitDither, "Limit Dither", v36, effects::limiter::ditherNames, 0));
+        layout.add (makeChoice (ParamIDs::limitShaping, "Limit Noise Shaping", v36, effects::limiter::shapingNames, 0));
+        layout.add (makeSwitch (ParamIDs::limitUnity, "Limit Unity Gain", v36, false));
+        layout.add (makeSwitch (ParamIDs::limitDelta, "Limit Delta", v36, false));
+        layout.add (makeSwitch (ParamIDs::limitDcFilter, "Limit DC Filter", v36, false));
+    }
 
     layout.add (makeFloat (ParamIDs::eqOutput, "EQ Output", { -36.0f, 36.0f, 0.01f }, 0.0f, v30, asDb));
     layout.add (makeFloat (ParamIDs::eqGainScale, "EQ Gain Scale", { 0.0f, 2.0f, 0.01f }, 1.0f, v30, asPercent));

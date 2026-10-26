@@ -128,8 +128,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       eqPanel (processorToShow),
       // The blocks that shape the sound, in order; it grows as the stomps are built.
       limiterPanel (processorToShow.getParameters(),
-                    { { "LIMIT", { { ParamIDs::limitOn, "ON" }, { ParamIDs::limitThreshold, "THRESHOLD" }, { ParamIDs::limitMakeUp, "MAKE UP" },
-                                   { ParamIDs::limitMode, "MODE" }, { ParamIDs::limitMix, "MIX" }, { ParamIDs::limitLink, "LINK" } } },
+                    { { "LIMIT", { { ParamIDs::limitOn, "ON" }, { ParamIDs::limitGain, "GAIN" }, { ParamIDs::limitCeiling, "OUTPUT" },
+                                   { ParamIDs::limitMode, "STYLE" }, { ParamIDs::limitLookahead, "LOOKAHEAD" }, { ParamIDs::limitTruePeak, "TRUE PEAK" } } },
                       { "OUTPUT", { { ParamIDs::limitTrim, "OUTPUT TRIM" } } } }),
       // Each block in the red to pink to orange of the menus and DOMINION's
       // and ORACLE's pages, by its place in the chain: red first, orange last.
@@ -278,8 +278,9 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     // LIMITER: PR7-C's limiter and output trim, last in the chain; its name opens its knobs.
     addStomp (7, "LIMITER", { ParamIDs::limitOn }, limiterBlock, [this]
     {
-        const auto ceiling = rawValue (ParamIDs::limitThreshold) + rawValue (ParamIDs::limitMakeUp) + rawValue (ParamIDs::limitTrim);
-        return "Ceiling " + juce::String (ceiling, 1) + " dB, " + valueText (ParamIDs::limitMode).toUpperCase();
+        const auto ceiling = rawValue (ParamIDs::limitCeiling) + rawValue (ParamIDs::limitTrim);
+        return "Ceiling " + juce::String (ceiling, 1) + (rawValue (ParamIDs::limitTruePeak) > 0.5f ? " dBTP, " : " dB, ")
+               + valueText (ParamIDs::limitMode).toUpperCase();
     });
 
     // The bottom row, as the GSP21's in its five-preset mode: five rigs from

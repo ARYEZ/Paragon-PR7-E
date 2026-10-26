@@ -13,7 +13,7 @@
 #include "rigs/CompPresets.h"
 #include "rigs/DominionPresets.h"
 #include "dsp/effects/Compressor.h"
-#include "dsp/effects/Limiter.h"
+#include "dsp/effects/MasterLimiter.h"
 #include "dsp/eq/EqMatchSession.h"
 #include "dsp/eq/ParametricEq.h"
 #include "dsp/effects/Presence.h"
@@ -189,6 +189,8 @@ public:
     float getCompressorReductionDb (int channel) const noexcept { return compressor.getReductionDb (channel); }
     // The LIMITER's gain reduction on a channel in the last block (dB, 0 or more).
     float getLimiterReductionDb (int channel) const noexcept { return limiter.getReductionDb (channel); }
+    effects::MasterLimiter& getLimiter() noexcept { return limiter; }
+    effects::MasterLimiter::Settings getLimiterSettings() const;
     void resetTuner() noexcept { tuner.clear(); }
     void updateTuner();   // the timer calls this; tests call it to step the tuner
 
@@ -270,9 +272,7 @@ private:
     std::array<MultibandBandParameters, ParamIDs::mbNumBands> multibandBandParameters {};
     std::atomic<int> multibandSolo { -1 };
     juce::AudioBuffer<float> compSidechain;   // what it listens to: the audio itself
-    effects::Limiter limiter;   // stomp 7, ported from PR7-C
-    juce::SmoothedValue<float> limitTrim { 1.0f };   // its OUTPUT TRIM (1 while it's off)
-    bool limitTrimFresh = true;   // EQ Match's listening (its folder is set with the rigs folder)
+    effects::MasterLimiter limiter;   // stomp 7 (with its OUTPUT TRIM)   // EQ Match's listening (its folder is set with the rigs folder)
     std::array<effects::Presence, effects::maxChannels> presence;
 
     std::unique_ptr<RigLibrary> rigLibrary;

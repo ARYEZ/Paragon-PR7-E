@@ -17,7 +17,7 @@ namespace
     // Which version's parameters a project was saved with, as for rigs (see
     // Rig.cpp). Projects from before 0.3.0 don't say: 0.
     const juce::Identifier parameterVersionKey { "parameterVersion" };
-    constexpr int parameterVersion = 35;
+    constexpr int parameterVersion = 36;
 
 }
 
@@ -93,8 +93,6 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     multiband.prepare (sampleRate, preparedBlockSize);
     compSidechain.setSize (2, preparedBlockSize);
     limiter.prepare (sampleRate, preparedBlockSize);
-    limitTrim.reset (sampleRate, gainRampSeconds);
-    limitTrimFresh = true;
     eqInputTap.setSampleRate (sampleRate);
     eqOutputTap.setSampleRate (sampleRate);
     for (auto& shelf : presence)
@@ -104,10 +102,37 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     updateLatency();
 }
 
+effects::MasterLimiter::Settings ParagonX1AudioProcessor::getLimiterSettings() const
+{
+    effects::MasterLimiter::Settings s;
+    s.on = isOn (ParamIDs::limitOn);
+    s.style = (effects::limiter::Style) juce::jlimit (0, ParamRanges::limitModes.size() - 1, juce::roundToInt (param (ParamIDs::limitMode)));
+    s.gainDb = param (ParamIDs::limitGain);
+    s.ceilingDb = param (ParamIDs::limitCeiling);
+    s.lookaheadMs = param (ParamIDs::limitLookahead);
+    s.attackMs = param (ParamIDs::limitAttack);
+    s.releaseMs = param (ParamIDs::limitRelease);
+    s.transientLink = param (ParamIDs::limitLinkTransient) / 100.0f;
+    s.releaseLink = param (ParamIDs::limitLinkRelease) / 100.0f;
+    s.truePeak = isOn (ParamIDs::limitTruePeak);
+    s.oversampling = juce::roundToInt (param (ParamIDs::limitOversampling));
+    s.dither = juce::roundToInt (param (ParamIDs::limitDither));
+    s.shaping = juce::roundToInt (param (ParamIDs::limitShaping));
+    s.unity = isOn (ParamIDs::limitUnity);
+    s.delta = isOn (ParamIDs::limitDelta);
+    s.dcFilter = isOn (ParamIDs::limitDcFilter);
+    s.trimDb = param (ParamIDs::limitTrim);
+    s.mix = param (ParamIDs::limitMix) / 100.0f;
+    s.link = isOn (ParamIDs::limitLink);
+    return s;
+}
+
 void ParagonX1AudioProcessor::updateLatency()
 {
     // Only COMP's LOOK-AHEAD delays the sound (the NAM amp, which also did, went with PR7-B's bass blocks).
-    const auto latency = isOn (ParamIDs::mbLookahead) ? (int) std::lround (effects::multiband::lookaheadSeconds * inputTap.getSampleRate()) : 0;
+    // COMP's LOOK-AHEAD, and the LIMITER's (with its oversampling and true peak).
+    const auto latency = (isOn (ParamIDs::mbLookahead) ? (int) std::lround (effects::multiband::lookaheadSeconds * inputTap.getSampleRate()) : 0)
+                         + limiter.getLatencySamples (getLimiterSettings());
     if (latency != getLatencySamples())
         setLatencySamples (latency);
 }
@@ -406,26 +431,11 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, in
             block.getChannelPointer (channel)[i] *= gain;
     }
 
-    // Stomp 7, the LIMITER (PR7-C's): last, so nothing after it can push a
-    // peak past its ceiling. OUTPUT and RIG LEVEL come
-    // before it, so turning OUTPUT up drives into it, as into a mastering
-    // limiter. Then its OUTPUT TRIM (which moves the ceiling with it, as on PR7-C).
-    const auto limiterOn = isOn (ParamIDs::limitOn);
-    limiter.process (block, { limiterOn, param (ParamIDs::limitThreshold), param (ParamIDs::limitMakeUp),
-                              (effects::Limiter::Mode) juce::jlimit (0, 2, juce::roundToInt (param (ParamIDs::limitMode))),
-                              param (ParamIDs::limitMix) / 100.0f, isOn (ParamIDs::limitLink) });
-    const auto trimTarget = limiterOn ? juce::Decibels::decibelsToGain (param (ParamIDs::limitTrim)) : 1.0f;
-    if (limitTrimFresh)   // playback is starting: at the setting from the first sample (as the limiter is)
-        limitTrim.setCurrentAndTargetValue (trimTarget);
-    limitTrimFresh = false;
-    limitTrim.setTargetValue (trimTarget);
-    if (limitTrim.isSmoothing() || ! juce::approximatelyEqual (limitTrim.getTargetValue(), 1.0f))
-        for (int i = 0; i < numSamples; ++i)
-        {
-            const auto gain = limitTrim.getNextValue();
-            for (size_t channel = 0; channel < block.getNumChannels(); ++channel)
-                block.getChannelPointer (channel)[i] *= gain;
-        }
+    // Stomp 7, the LIMITER: last, so nothing after it can push a peak past
+    // its ceiling. OUTPUT and RIG LEVEL come before it, so turning OUTPUT up
+    // drives into it, as into a mastering limiter. Its OUTPUT TRIM and
+    // DITHER are inside it, at the very end.
+    limiter.process (block, getLimiterSettings());
 
     // BYPASS crossfades to the clean input, channel by channel.
     bypassAmount.setTargetValue (isOn (ParamIDs::bypass) ? 1.0f : 0.0f);
@@ -763,6 +773,30 @@ void ParagonX1AudioProcessor::setStateInformation (const void* data, int sizeInB
         auto target = state.getChildWithProperty ("id", ParamIDs::expressionTarget);
         if (target.isValid() && (int) target["value"] > ExpressionTargets::volume)
             target.setProperty ("value", ExpressionTargets::off, nullptr);
+    }
+    // Saved before 0.16.0: the LIMITER's THRESHOLD and MAKE UP as GAIN and OUTPUT (the same sound).
+    if ((int) state.getProperty (parameterVersionKey, 0) < 36)
+    {
+        const auto get = [&state] (const char* id, float otherwise)
+        {
+            const auto child = state.getChildWithProperty ("id", id);
+            return child.isValid() ? (float) child["value"] : otherwise;
+        };
+        const auto set = [&state] (const char* id, float value)
+        {
+            auto child = state.getChildWithProperty ("id", id);
+            if (! child.isValid())
+            {
+                child = juce::ValueTree ("PARAM");
+                child.setProperty ("id", id, nullptr);
+                state.appendChild (child, nullptr);
+            }
+            child.setProperty ("value", value, nullptr);
+        };
+        const auto converted = convertOldLimiter (get (ParamIDs::limitThreshold, -1.0f), get (ParamIDs::limitMakeUp, 0.0f), get (ParamIDs::limitTrim, 0.0f));
+        set (ParamIDs::limitGain, converted.gain);
+        set (ParamIDs::limitCeiling, converted.ceiling);
+        set (ParamIDs::limitTrim, converted.trim);
     }
     parameters.replaceState (state);
 
