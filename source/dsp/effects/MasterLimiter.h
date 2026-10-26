@@ -207,7 +207,7 @@ namespace effects
         LoudnessMeter loudness;
         int frameLength = 480, inFrame = 0;
         float frameIn = 0.0f, frameOut = 0.0f, frameReduction = 0.0f;
-        std::array<Frame, 4096> frames {};
+        std::vector<Frame> frames = std::vector<Frame> (4096);   // on the heap: the processor is sometimes on the stack (tests), and Windows' is small
         juce::AbstractFifo frameFifo { 4096 };
     };
 }

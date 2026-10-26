@@ -606,3 +606,4 @@ TEST_CASE ("Limiter: its heaviest settings still run comfortably in real time", 
     WARN ("The LIMITER at its heaviest uses " << juce::String (fraction * 100.0, 1) << "% of one core in real time");
     CHECK (fraction < 0.25);
 }
+
