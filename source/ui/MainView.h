@@ -152,7 +152,7 @@ private:
     SelectedRigPanel selectedRig;
     EqOverview eqPanel;   // the dock's default: the EQ's curve, and OPEN EQ
     EffectPanel limiterPanel;   // stomp 7's
-    juce::TextButton closePanel { "EQ" };   // back to the EQ overview, the dock's default
+    juce::TextButton closePanel { "ECHELON" };   // back to the EQ overview, the dock's default
     SignalChain signalChain;
     int selectedBlock = eqBlock;
 

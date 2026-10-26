@@ -186,7 +186,7 @@ TEST_CASE ("Seven stomps in a row over the rig row, labelled from the plan", "[u
     REQUIRE (switches.size() == 14);
     const std::vector<Footswitch*> stomps (switches.begin(), switches.begin() + 7);
 
-    const juce::StringArray names { "ORACLE", "COMP", "INSERTS", "EQ", "DOMINION", "AUTO EQ", "LIMITER" };
+    const juce::StringArray names { "ORACLE", "CONSTRICTOR", "INSERTS", "ECHELON", "DOMINION", "AUTO EQ", "LIMITER" };
     for (size_t i = 0; i < stomps.size(); ++i)
         CHECK (stomps[i]->getTitle() == names[(int) i] + " footswitch");
 

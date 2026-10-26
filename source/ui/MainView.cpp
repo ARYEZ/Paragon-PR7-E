@@ -134,9 +134,9 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       // Each block in the red to pink to orange of the menus and DOMINION's
       // and ORACLE's pages, by its place in the chain: red first, orange last.
       signalChain (processorToShow.getParameters(), {
-          { "EQ", Icons::Type::eq, chainColour (0, 4), ParamIDs::eqOn },
+          { "ECHELON", Icons::Type::eq, chainColour (0, 4), ParamIDs::eqOn },
           { "DOMINION", Icons::Type::filterPitch, chainColour (1, 4), ParamIDs::domOn },
-          { "COMP", Icons::Type::comp, chainColour (2, 4), ParamIDs::compOn },
+          { "CONSTRICTOR", Icons::Type::comp, chainColour (2, 4), ParamIDs::compOn },
           { "LIMITER", Icons::Type::comp, chainColour (3, 4), ParamIDs::limitOn } }),
       rigBrowser (processorToShow),
       settingsPage (processorToShow),
@@ -254,7 +254,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     });
     footswitches[0]->onSelect = [this] { showPage (Page::oracle); };
     // COMP: PR7-C's compressor with bands (inspired by Pro-MB), after the EQ; its name opens its own page.
-    addStomp (2, "COMP", { ParamIDs::compOn }, compBlock, [this]
+    addStomp (2, "CONSTRICTOR", { ParamIDs::compOn }, compBlock, [this]
     {
         return valueText (ParamIDs::compCharacter) + "  " + valueText (ParamIDs::compThreshold) + "  " + valueText (ParamIDs::compRatio);
     });
@@ -262,7 +262,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addStomp (3, "INSERTS", {}, noBlock, planned ("Plugin slots: to plan"));
 
     // EQ (inspired by FabFilter Pro-Q 4): its name opens its own page.
-    addStomp (4, "EQ", { ParamIDs::eqOn }, eqBlock, [this]
+    addStomp (4, "ECHELON", { ParamIDs::eqOn }, eqBlock, [this]
     {
         const auto settings = audioProcessor.getEqSettings();
         const auto bands = std::count_if (settings.bands.begin(), settings.bands.end(), [] (const eq::Band& b) { return b.used; });
@@ -360,7 +360,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     limiterPage.onClose = [this] { showPage (Page::processor); };
     addChildComponent (limiterPage);
 
-    closePanel.setTooltip ("Back to the EQ");
+    closePanel.setTooltip ("Back to ECHELON");
     closePanel.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
     closePanel.onClick = [this] { selectBlock (eqBlock); };
     addChildComponent (closePanel);

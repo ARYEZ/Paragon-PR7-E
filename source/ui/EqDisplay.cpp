@@ -96,26 +96,24 @@ void EqBands::remove (int band) const
     set (band, "Used", 0.0f);
 }
 
-juce::Colour EqBands::colourFor (int band)
+juce::Colour EqBands::colourFor (const eq::Band& b)
 {
-    static const juce::Colour colours[] = { juce::Colour (0xffff7a1a), juce::Colour (0xff45b4ff), juce::Colour (0xffb8f040),
-                                            juce::Colour (0xffff4fd8), juce::Colour (0xff4fe3dd), juce::Colour (0xffffb22e),
-                                            juce::Colour (0xffb86dff), juce::Colour (0xffff5d6c), juce::Colour (0xff35d6a8),
-                                            juce::Colour (0xffe8d29a), juce::Colour (0xff7a8cff), juce::Colour (0xffff9a7a) };
-    return colours[(size_t) band % std::size (colours)];
+    const auto proportion = std::log (juce::jlimit (20.0, 20000.0, (double) b.frequency) / 20.0) / std::log (1000.0);
+    return ParagonLookAndFeel::menuHighlight ({ 0.0f, 0.0f, 1.0f, 1.0f }).getColourAtPosition (proportion);
 }
 
 juce::Colour EqBands::colourFor (eq::Placement placement)
 {
     switch (placement)
     {
-        case eq::Placement::left:  return juce::Colour (0xff4fd1ff);   // cyan
-        case eq::Placement::right: return juce::Colour (0xffff5fa2);   // pink
-        case eq::Placement::mid:   return juce::Colour (0xffb8f040);   // lime
-        case eq::Placement::side:  return juce::Colour (0xffb86dff);   // violet
+        // In the menus' red to pink to orange family (0.16.1), apart from each other and the white whole.
+        case eq::Placement::left:  return juce::Colour (0xffff3d5a);   // red
+        case eq::Placement::right: return juce::Colour (0xffff8a3d);   // orange
+        case eq::Placement::mid:   return juce::Colour (0xffff5fb0);   // pink
+        case eq::Placement::side:  return juce::Colour (0xffffc04a);   // amber
         case eq::Placement::stereo: break;
     }
-    return ParagonColours::accent;
+    return juce::Colours::white;   // the whole curve, white as on DOMINION's and COMP's pages
 }
 
 //==============================================================================
@@ -182,7 +180,7 @@ float SpectrumAnalyser::levelDb (double hz, double toHz) const noexcept
 EqDisplay::EqDisplay (ParagonX1AudioProcessor& p) : bands (p)
 {
     setWantsKeyboardFocus (true);
-    setTitle ("EQ display");
+    setTitle ("ECHELON display");
     setDescription ("Double-click to add a band; drag a dot to move it; mouse wheel for Q");
     shown = bands.settings();
     startTimerHz (30);
@@ -390,7 +388,7 @@ void EqDisplay::paint (juce::Graphics& g)
         area.lineTo (plot.getRight() + 1.0f, zero);
         area.lineTo (plot.getX(), zero);
         area.closeSubPath();
-        const auto colour = EqBands::colourFor (band);
+        const auto colour = EqBands::colourFor (shown.bands[(size_t) band]);
         g.setColour (colour.withAlpha (band == selected ? 0.22f : 0.08f));
         g.fillPath (area);
         g.setColour (colour.withAlpha (band == selected ? 0.8f : 0.35f));
@@ -469,7 +467,7 @@ void EqDisplay::paint (juce::Graphics& g)
         const auto& b = shown.bands[(size_t) band];
         if (! b.isDynamic())
             continue;
-        const auto colour = EqBands::colourFor (band);
+        const auto colour = EqBands::colourFor (shown.bands[(size_t) band]);
         const auto dot = dotFor (b), handle = rangeHandleFor (b);
         g.setColour (colour.withAlpha (0.55f));
         g.drawLine ({ dot, handle }, 2.0f);
@@ -496,7 +494,7 @@ void EqDisplay::paint (juce::Graphics& g)
         if (! b.used)
             continue;
         const auto centre = dotFor (b);
-        const auto colour = EqBands::colourFor (band);
+        const auto colour = EqBands::colourFor (shown.bands[(size_t) band]);
         const auto dot = juce::Rectangle<float> (16.0f, 16.0f).withCentre (centre);
         if (band == selected || band == hovered)
         {

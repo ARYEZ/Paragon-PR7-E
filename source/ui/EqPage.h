@@ -17,6 +17,8 @@ public:
     explicit EqPage (ParagonX1AudioProcessor&);
     ~EqPage() override;
 
+    static constexpr int titleWidth = 104;   // the name, at the top bar's left
+
     std::function<void()> onClose;
     EqDisplay& getDisplay() noexcept { return display; }
     bool isShowingDynamics() const noexcept { return dynamicRow; }
@@ -96,6 +98,6 @@ private:
     void timerCallback() override;
 
     ParagonX1AudioProcessor& processor;
-    juce::TextButton open { "OPEN EQ" };
+    juce::TextButton open { "OPEN ECHELON" };
     juce::Rectangle<float> graph;
 };

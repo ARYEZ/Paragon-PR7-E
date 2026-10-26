@@ -41,7 +41,7 @@ none of those products' names or branding go on the plugin.
   to the loaded rig's five when you load one elsewhere.
 - **Stomps 1-7:** press a pad to switch it on or off; click its name to show its knobs
   in the dock (ORACLE, EQ and DOMINION open their own pages).
-- **EQ (stomp 4)**, inspired by FabFilter Pro-Q 4: up to 24 bands (bell, shelves, cuts, notch, band pass, tilt shelf,
+- **ECHELON (stomp 4, the EQ)**, inspired by FabFilter Pro-Q 4: up to 24 bands (bell, shelves, cuts, notch, band pass, tilt shelf,
   flat tilt, all pass; 6 to 96 dB/oct), each on the stereo signal or only its left, right, mid or side. Analog-matched
   curves with zero latency. On its page: double-click to add a band, drag its dot, mouse wheel for Q (or a cut's slope),
   Alt-click to switch it off, right-click for its menu, Delete to remove it; hold SOLO to hear only what a band works on.
@@ -60,7 +60,7 @@ none of those products' names or branding go on the plugin.
   for the lows and highs; MAX CUT, WET TRIM, DELTA, MIX and OUT. Click its name for its page. Zero latency.
   **PRESET** (on its page): its own presets, apart from the rigs (vocals, drums, instruments, mix and master, creative,
   and under GENRES the vocal, guitars and mix of each genre the genre rigs use), and your own, saved in "Dominion Presets" beside your rigs. A preset changes only DOMINION's settings.
-- **COMP (stomp 2)**, after the EQ; click its name for its page.
+- **CONSTRICTOR (stomp 2, the compressor)**, after ECHELON; click its name for its page.
   - **Bands** (up to six, inspired by FabFilter Pro-MB, our own design): each works on its own part of the spectrum.
     Double-click the graph to add one; drag its dot sideways to move it and up or down for RANGE, drag its edges.
     MODE and RANGE give four kinds: COMPRESS turns loud parts down (RANGE below 0) or brings quiet parts up (above 0);

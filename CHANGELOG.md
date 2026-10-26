@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.16.1
+
+- **The LIMITER pumps much less.** You were right: it pumped in every style. Two parts of my design caused it, and both are fixed:
+  - Its slower stage followed every peak, so each kick turned the whole mix down for its RELEASE time (250 ms). It now follows the average level (over 100 ms), so a single hit hardly moves it, and each style gives it less of the work.
+  - Its fast stage slowed its recovery after "long" limiting, but counted a run of kicks, or a mix limited all the time, as long limiting, so each kick's extra dip lingered. It now keeps track of how much the music usually needs turning down and comes straight back to that after a hit, slowing down only around it (where slow recovery means less distortion).
+  - Measured on kicks over a loud mix that's limited all the time (GAIN +8 dB), 80 to 120 ms after a kick: MODERN's extra dip below the mix's own level went from 2.1 dB to 0.4 dB, CLEAR's from 3.3 to 0.4, SAFE's from 3.2 to 0.5. A new test keeps it that way. During the kick itself the mix still dips: when a kick hits the ceiling, a limiter that keeps the stereo image turns everything down with it (AGGRESSIVE dips least, as its clipper takes the kick's top). PUNCHY and GLUE still pump a little, on purpose.
+  - TRUE PEAK's last stage now sits 0.12 dB under the ceiling (was 0.1), to stay within 0.2 dB in its hardest case.
+- **New names:** the EQ is now **ECHELON** and the compressor **CONSTRICTOR**, on the stomps, the signal chain, their pages, and the parameter names your DAW shows. Projects, rigs, automation and presets are unaffected: only the names you see changed.
+- **ECHELON's page in the gradient,** as DOMINION's, CONSTRICTOR's and the LIMITER's: its name in the red to pink to orange gradient, each band coloured by where it sits on that gradient (red in the lows, pink in the middle, orange in the highs), the whole curve in white, and the left, right, mid and side curves in the same family.
+
 ## 0.16.0
 
 - **The LIMITER (stomp 7), inspired by FabFilter Pro-L 2**, as you asked. Our own design from its manual: FabFilter doesn't publish how Pro-L 2 limits, so this follows what the manual says each control does. Click LIMITER's name (or LIMITER in the signal chain) for its new page.

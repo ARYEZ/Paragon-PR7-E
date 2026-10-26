@@ -139,11 +139,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // band is created in it, then OUTPUT, GAIN SCALE and AUTO GAIN. eqOn
     // (version 8) was the graphic EQ's switch; it's the stomp's now.
     constexpr int v8 = 8, v30 = 30;
-    layout.add (makeSwitch (ParamIDs::eqOn, "EQ On", v8, false));
+    layout.add (makeSwitch (ParamIDs::eqOn, "Echelon On", v8, false));
     for (int band = 0; band < ParamIDs::eqNumBands; ++band)
     {
         const auto id = [band] (const char* what) { return ParamIDs::eqBand (band, what); };
-        const auto name = [band] (const juce::String& what) { return "EQ Band " + juce::String (band + 1) + " " + what; };
+        const auto name = [band] (const juce::String& what) { return "Echelon Band " + juce::String (band + 1) + " " + what; };
         const eq::Band defaults;
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id ("Used"), v30 }, name ("Used"), false));
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id ("On"), v30 }, name ("On"), true));
@@ -162,7 +162,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     for (int band = 0; band < ParamIDs::eqNumBands; ++band)
     {
         const auto id = [band] (const char* what) { return ParamIDs::eqBand (band, what); };
-        const auto name = [band] (const juce::String& what) { return "EQ Band " + juce::String (band + 1) + " " + what; };
+        const auto name = [band] (const juce::String& what) { return "Echelon Band " + juce::String (band + 1) + " " + what; };
         const eq::Band defaults;
         layout.add (makeFloat (id ("Dyn").toRawUTF8(), name ("Dynamic Range"),
                                { (float) -eq::dynamics::maxRangeDb, (float) eq::dynamics::maxRangeDb, 0.01f }, 0.0f, v31, asDb));
@@ -177,15 +177,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     {
         using namespace ParamRanges;
         constexpr int v33 = 33;
-        layout.add (makeSwitch (ParamIDs::compOn, "Compressor", v33, false));
-        layout.add (makeFloat (ParamIDs::compThreshold, "Comp Threshold", { compThresholdMin, compThresholdMax, 0.1f }, -18.0f, v33, asDb));
-        layout.add (makeFloat (ParamIDs::compRatio, "Comp Ratio", ratioRange(), 4.0f, v33, asRatio));
-        layout.add (makeFloat (ParamIDs::compAttack, "Comp Attack", logRange (compAttackMin, compAttackMax), 10.0f, v33, asMs));
-        layout.add (makeFloat (ParamIDs::compRelease, "Comp Release", logRange (compReleaseMin, compReleaseMax), 300.0f, v33, asMs));
-        layout.add (makeSwitch (ParamIDs::compAuto, "Comp Auto Release", v33, false));
-        layout.add (makeFloat (ParamIDs::compMakeUp, "Comp Make Up", { 0.0f, compMakeUpMax, 0.1f }, 0.0f, v33, asDb));
-        layout.add (makeChoice (ParamIDs::compCharacter, "Comp Character", v33, compCharacters, 0));
-        layout.add (makeSwitch (ParamIDs::compLink, "Comp Link", v33, true));
+        layout.add (makeSwitch (ParamIDs::compOn, "Constrictor", v33, false));
+        layout.add (makeFloat (ParamIDs::compThreshold, "Constrictor Threshold", { compThresholdMin, compThresholdMax, 0.1f }, -18.0f, v33, asDb));
+        layout.add (makeFloat (ParamIDs::compRatio, "Constrictor Ratio", ratioRange(), 4.0f, v33, asRatio));
+        layout.add (makeFloat (ParamIDs::compAttack, "Constrictor Attack", logRange (compAttackMin, compAttackMax), 10.0f, v33, asMs));
+        layout.add (makeFloat (ParamIDs::compRelease, "Constrictor Release", logRange (compReleaseMin, compReleaseMax), 300.0f, v33, asMs));
+        layout.add (makeSwitch (ParamIDs::compAuto, "Constrictor Auto Release", v33, false));
+        layout.add (makeFloat (ParamIDs::compMakeUp, "Constrictor Make Up", { 0.0f, compMakeUpMax, 0.1f }, 0.0f, v33, asDb));
+        layout.add (makeChoice (ParamIDs::compCharacter, "Constrictor Character", v33, compCharacters, 0));
+        layout.add (makeSwitch (ParamIDs::compLink, "Constrictor Link", v33, true));
     }
     // COMP's bands (0.13.0).
     {
@@ -202,13 +202,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::StringArray slopeNames;
         for (int i = 0; i < mb::numSlopes; ++i)
             slopeNames.add (eq::slopeNames[i]);
-        layout.add (makeSwitch (ParamIDs::compWide, "Comp Full Band", v35, true));
-        layout.add (makeSwitch (ParamIDs::mbLookahead, "Comp Look-ahead", v35, false));
-        layout.add (makeFloat (ParamIDs::mbMix, "Comp Bands Mix", { 0.0f, 200.0f, 1.0f }, 100.0f, v35, percent));
+        layout.add (makeSwitch (ParamIDs::compWide, "Constrictor Full Band", v35, true));
+        layout.add (makeSwitch (ParamIDs::mbLookahead, "Constrictor Look-ahead", v35, false));
+        layout.add (makeFloat (ParamIDs::mbMix, "Constrictor Bands Mix", { 0.0f, 200.0f, 1.0f }, 100.0f, v35, percent));
         for (int band = 0; band < ParamIDs::mbNumBands; ++band)
         {
             const auto id = [band] (const char* what) { return ParamIDs::mbBand (band, what); };
-            const auto name = [band] (const juce::String& what) { return "Comp Band " + juce::String (band + 1) + " " + what; };
+            const auto name = [band] (const juce::String& what) { return "Constrictor Band " + juce::String (band + 1) + " " + what; };
             const mb::Band defaults;
             layout.add (makeSwitch (id ("Used").toRawUTF8(), name ("Used"), v35, false));
             layout.add (makeSwitch (id ("On").toRawUTF8(), name ("On"), v35, true));
@@ -308,8 +308,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         layout.add (makeSwitch (ParamIDs::limitDcFilter, "Limit DC Filter", v36, false));
     }
 
-    layout.add (makeFloat (ParamIDs::eqOutput, "EQ Output", { -36.0f, 36.0f, 0.01f }, 0.0f, v30, asDb));
-    layout.add (makeFloat (ParamIDs::eqGainScale, "EQ Gain Scale", { 0.0f, 2.0f, 0.01f }, 1.0f, v30, asPercent));
-    layout.add (makeSwitch (ParamIDs::eqAutoGain, "EQ Auto Gain", v30, false));
+    layout.add (makeFloat (ParamIDs::eqOutput, "Echelon Output", { -36.0f, 36.0f, 0.01f }, 0.0f, v30, asDb));
+    layout.add (makeFloat (ParamIDs::eqGainScale, "Echelon Gain Scale", { 0.0f, 2.0f, 0.01f }, 1.0f, v30, asPercent));
+    layout.add (makeSwitch (ParamIDs::eqAutoGain, "Echelon Auto Gain", v30, false));
     return layout;
 }
