@@ -135,11 +135,13 @@ private:
     juce::Label rigLevelLabel { {}, "RIG LEVEL" }, presenceLabel { {}, "PRESENCE" };
     // The seven stomps along the top row.
     std::array<std::unique_ptr<Footswitch>, 7> footswitches;
-    // The bottom row: five rigs, then BANK down and BANK up.
-    std::array<std::unique_ptr<Footswitch>, 5> rigSwitches;
+    // Rows 2 to 4 (0.17.0): nineteen rigs, seven to a row, then BANK down and
+    // BANK up at the end of row 4.
+    static constexpr int rigsPerRow = 7;
+    std::array<std::unique_ptr<Footswitch>, 19> rigSwitches;
     std::unique_ptr<Footswitch> bankDown, bankUp;
     int rigPage = 0;
-    juce::File followedRig;   // the current rig the bottom row last followed
+    juce::File followedRig;   // the current rig the rig rows last followed
     juce::String followedRigName;
 
     // The tuner's note for the screen
@@ -147,12 +149,10 @@ private:
     LedDisplay::Contents::Tuner tunerState;
     int ticks = 0;
 
-    // Dock and signal chain
-    RigNavigator rigNavigator;
-    SelectedRigPanel selectedRig;
-    EqOverview eqPanel;   // the dock's default: the EQ's curve, and OPEN EQ
-    EffectPanel limiterPanel;   // stomp 7's
-    juce::TextButton closePanel { "ECHELON" };   // back to the EQ overview, the dock's default
+    // The signal chain. (The dock above it, with the rig browser, the
+    // selected rig and ECHELON's overview, went in 0.17.0 for rows 3 and 4:
+    // PRESETS browses the rigs, SAVE / SAVE AS are on the unit, and each
+    // stomp's name opens its page.)
     SignalChain signalChain;
     int selectedBlock = eqBlock;
 

@@ -29,17 +29,18 @@ namespace
     // include room for its glow), laid out as a DigiTech GSP21's foot
     // controller: the face runs its whole width (there's no expression
     // pedal bay since 0.12.0), with the display centred along the top and
-    // two long rows of seven footswitches.
-    const auto pedalBounds = mock (126, 68, 1552, 564);
-    constexpr float faceLeft = 164, faceRight = 1514;
+    // four long rows of seven footswitches (two before 0.17.0, with a dock
+    // under the unit), down to the signal chain.
+    const auto pedalBounds = mock (126, 68, 1552, 822);
+    constexpr float faceLeft = 164, faceRight = 1514, faceBottom = 792;
 
     // The small keys (UNDO REDO BYPASS): column centres, label and key tops.
     constexpr float clusterX[] = { 470, 535, 600 };
     constexpr float clusterLabelY = 132, clusterButtonY = 149;
 
-    // The two rows of footswitches: seven across the face, each `switchPitch` wide.
+    // The four rows of footswitches: seven across the face, each `switchPitch` wide.
     constexpr float switchLeft = 176, switchPitch = 190;
-    constexpr float switchRowY[] = { 248, 400 }, switchHeight = 124;
+    constexpr float switchRowY[] = { 244, 380, 516, 652 }, switchHeight = 118;
     // A stomp whose name opens no block (not built yet, or no knobs).
     constexpr int noBlock = -1;
 
@@ -124,13 +125,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       rigLevelAttachment (processorToShow.getParameters(), ParamIDs::rigLevel, rigLevelKnob),
       presenceAttachment (processorToShow.getParameters(), ParamIDs::presence, presenceKnob),
       tunerReader (processorToShow),
-      selectedRig (processorToShow),
-      eqPanel (processorToShow),
       // The blocks that shape the sound, in order; it grows as the stomps are built.
-      limiterPanel (processorToShow.getParameters(),
-                    { { "LIMIT", { { ParamIDs::limitOn, "ON" }, { ParamIDs::limitGain, "GAIN" }, { ParamIDs::limitCeiling, "OUTPUT" },
-                                   { ParamIDs::limitMode, "STYLE" }, { ParamIDs::limitLookahead, "LOOKAHEAD" }, { ParamIDs::limitTruePeak, "TRUE PEAK" } } },
-                      { "OUTPUT", { { ParamIDs::limitTrim, "OUTPUT TRIM" } } } }),
       // Each block in the red to pink to orange of the menus and DOMINION's
       // and ORACLE's pages, by its place in the chain: red first, orange last.
       signalChain (processorToShow.getParameters(), {
@@ -285,9 +280,9 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     });
     footswitches[6]->onSelect = [this] { showPage (Page::limiter); };
 
-    // The bottom row, as the GSP21's in its five-preset mode: five rigs from
-    // the current bank (pages of five), then BANK down and BANK up, which
-    // change the five shown without loading one, as on the GSP.
+    // Rows 2 to 4: a bank's rigs (up to nineteen at a time), then BANK down
+    // and BANK up, which change the rigs shown without loading one, as on
+    // the GSP21.
     for (size_t i = 0; i < rigSwitches.size(); ++i)
     {
         auto& rigSwitch = rigSwitches[i];
@@ -329,8 +324,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addAndMakeVisible (pedal);   // first, so everything on the pedal sits on top of it
     processorPage = { &pedal, &display, &rigUp, &rigDown, &pedalSave, &pedalSaveAs, &bypassButton,
                       &undoPedal, &redoPedal, &undoLabel, &redoLabel, &bypassLabel,
-                      &rigLevelKnob, &presenceKnob, &rigLevelLabel, &presenceLabel,
-                      &rigNavigator, &selectedRig };
+                      &rigLevelKnob, &presenceKnob, &rigLevelLabel, &presenceLabel };
     for (auto& footswitch : footswitches)
         processorPage.push_back (footswitch.get());
     for (auto& rigSwitch : rigSwitches)
@@ -340,15 +334,6 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     for (auto* component : processorPage)
         addAndMakeVisible (component);
 
-    addChildComponent (eqPanel);
-    addChildComponent (limiterPanel);
-    limiterPanel.setHeader (Icons::Type::comp, ParagonColours::comp, "LIMITER");
-    limiterPanel.setMeter ([this]
-    {
-        return -juce::jmax (audioProcessor.getLimiterReductionDb (0), audioProcessor.getLimiterReductionDb (1));
-    });
-
-    eqPanel.onOpen = [this] { showPage (Page::eq); };
     eqPage.onClose = [this] { showPage (Page::processor); };
     addChildComponent (eqPage);
     dominionPage.onClose = [this] { showPage (Page::processor); };
@@ -360,19 +345,6 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     limiterPage.onClose = [this] { showPage (Page::processor); };
     addChildComponent (limiterPage);
 
-    closePanel.setTooltip ("Back to ECHELON");
-    closePanel.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
-    closePanel.onClick = [this] { selectBlock (eqBlock); };
-    addChildComponent (closePanel);
-
-    rigNavigator.onShow = [this] (int filter, int bank)
-    {
-        rigBrowser.showFilter (filter, bank);
-        showPage (Page::presets);
-    };
-    selectedRig.onSave = [this] { saveRig(); };
-    selectedRig.onSaveAs = [this] { rigBrowser.promptSaveAs(); };
-
     signalChain.onSelect = [this] (int block)
     {
         if (block == dominionBlock)
@@ -381,6 +353,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
             showPage (Page::comp);
         else if (block == limiterBlock)
             showPage (Page::limiter);
+        else if (block == eqBlock)
+            showPage (Page::eq);
         else
             selectBlock (block);
     };
@@ -421,14 +395,8 @@ float MainView::rawValue (const char* parameterId) const
 
 void MainView::selectBlock (int block)
 {
-    // The selected block's knobs fill the middle of the dock; the graphic EQ is the default.
+    // The selected block: its stomp's name underlined, and its block in the chain marked.
     selectedBlock = block;
-    const auto onProcessorPage = page == Page::processor;
-    eqPanel.setVisible (block == eqBlock && onProcessorPage);
-    limiterPanel.setVisible (block == limiterBlock && onProcessorPage);
-    closePanel.setVisible (block != eqBlock && onProcessorPage);
-    if (block != eqBlock)
-        closePanel.toFront (false);
 
     const int footswitchBlocks[] = { tunerBlock, compBlock, noBlock, eqBlock, dominionBlock, noBlock, limiterBlock };
     static_assert (std::size (footswitchBlocks) == std::tuple_size_v<decltype (footswitches)>);
@@ -479,7 +447,6 @@ void MainView::refreshRig()
     followCurrentRig();
     display.setContents ({ entry != nullptr ? entry->rig.number : 0, rig.name,
                            entry != nullptr ? Rig::bankName (entry->rig.bank) : juce::String(), modified, bypassed, tunerState });
-    selectedRig.refresh();
 }
 
 void MainView::timerCallback()
@@ -539,18 +506,16 @@ bool MainView::keyPressed (const juce::KeyPress& key)
 
 std::vector<std::vector<const RigLibrary::Entry*>> MainView::rigPages() const
 {
-    // Each bank's rigs in order, five to a page; banks with no rigs have none.
-    // A page also starts at each ten (01, 11, 21...), so the genre rigs (x11
-    // to x19) begin a page of their own whatever comes before them.
+    // Each bank's rigs in order, as many to a page as there are pads
+    // (nineteen); banks with no rigs have none, and a bank with more goes on
+    // over another page.
     std::vector<std::vector<const RigLibrary::Entry*>> pages;
-    int bank = -1, tens = -1;
+    int bank = -1;
     for (const auto& entry : audioProcessor.getRigLibrary().getEntries())
     {
-        const auto entryTens = (entry.rig.number - 1) / 10;
-        if (entry.rig.bank != bank || entryTens != tens || pages.back().size() == 5)
+        if (entry.rig.bank != bank || pages.back().size() == rigSwitches.size())
             pages.emplace_back();
         bank = entry.rig.bank;
-        tens = entryTens;
         pages.back().push_back (&entry);
     }
     return pages;
@@ -563,7 +528,7 @@ void MainView::showRigPage (int index)
     for (size_t i = 0; i < rigSwitches.size(); ++i)
     {
         const auto* entry = rigPage < (int) pages.size() && i < pages[(size_t) rigPage].size() ? pages[(size_t) rigPage][i] : nullptr;
-        rigSwitches[i]->setNumberText (entry != nullptr ? entry->rig.getSlotName() : juce::String (i + 1));
+        rigSwitches[i]->setNumberText (entry != nullptr ? entry->rig.getSlotName() : juce::String());   // an empty pad: no number
         rigSwitches[i]->setName (entry != nullptr ? entry->rig.name.toUpperCase() : juce::String ("-"));
         rigSwitches[i]->refresh();
     }
@@ -574,7 +539,7 @@ void MainView::showRigPage (int index)
 void MainView::followCurrentRig()
 {
     // When the rig changes (loaded here, from the browser, the arrows or a
-    // project), the bottom row turns to its page; BANK on its own doesn't load one.
+    // project), the rig rows turn to its page; BANK on its own doesn't load one.
     const auto* current = audioProcessor.findCurrentRigEntry();
     const auto file = current != nullptr ? current->file : juce::File();
     const auto name = current != nullptr ? current->rig.name : juce::String();
@@ -687,8 +652,8 @@ void MainView::resized()
     settingsButton.setBounds (mock (1611, 14, 1649, 50));
 
     // Side strips
-    inputColumn.setBounds (mock (12, 72, 118, 556));
-    outputColumn.setBounds (mock (1558, 72, 1662, 556));
+    inputColumn.setBounds (mock (12, 72, 118, 822));
+    outputColumn.setBounds (mock (1558, 72, 1662, 822));
 
     // The unit. Its own drawing is positioned relative to its bounds.
     pedal.setBounds (pedalBounds);
@@ -697,10 +662,10 @@ void MainView::resized()
 
     PedalBody::Geometry geometry;
     // The face plate sits inside the rim with the same rim showing all round.
-    geometry.face = local (mockF (faceLeft, 94, faceRight, 534));
+    geometry.face = local (mockF (faceLeft, 94, faceRight, faceBottom));
     const auto rowRight = switchLeft + 7.0f * switchPitch;
-    geometry.sections = { local (mockF (switchLeft - 2, switchRowY[0] - 8, rowRight + 2, switchRowY[0] + switchHeight + 10)),
-                          local (mockF (switchLeft - 2, switchRowY[1] - 8, rowRight + 2, switchRowY[1] + switchHeight + 6)) };
+    for (const auto rowY : switchRowY)   // a raised panel for each row
+        geometry.sections.push_back (local (mockF (switchLeft - 2, rowY - 8, rowRight + 2, rowY + switchHeight + 6)));
     geometry.badge = local (mockF (196, 117, 394, 207));
 
     // The display centred along the top, as on the GSP21's controller, with
@@ -733,7 +698,7 @@ void MainView::resized()
     presenceKnob.setBounds (mock (1383, 98, 1497, 212));
     presenceLabel.setBounds (mock (1380, 196, 1500, 214));
 
-    // The seven stomps along the top row; the five rigs and BANK down, up along the bottom.
+    // The seven stomps along the top row; the rigs over rows 2 to 4, then BANK down and up.
     const auto placeSwitch = [] (Footswitch& footswitch, int row, int column)
     {
         // Each edge rounded on its own, so neighbours meet exactly.
@@ -745,22 +710,13 @@ void MainView::resized()
     for (size_t i = 0; i < footswitches.size(); ++i)
         placeSwitch (*footswitches[i], 0, (int) i);
     for (size_t i = 0; i < rigSwitches.size(); ++i)
-        placeSwitch (*rigSwitches[i], 1, (int) i);
-    placeSwitch (*bankDown, 1, 5);
-    placeSwitch (*bankUp, 1, 6);
-
-    // Dock: the middle panel takes the room the expression pedal's panel had.
-    rigNavigator.setBounds (mock (12, 568, 246, 822));
-    selectedRig.setBounds (mock (256, 568, 652, 822));
-    const auto summaryArea = mock (662, 568, 1662, 822);
-    eqPanel.setBounds (summaryArea);
-    limiterPanel.setBounds (summaryArea);
-    closePanel.setBounds (summaryArea.withSizeKeepingCentre (0, 0).withX (summaryArea.getRight() - 130).withY (summaryArea.getY() + 10)
-                              .withSize (118, 24));
+        placeSwitch (*rigSwitches[i], 1 + (int) i / rigsPerRow, (int) i % rigsPerRow);
+    placeSwitch (*bankDown, 3, 5);
+    placeSwitch (*bankUp, 3, 6);
 
     signalChain.setBounds (mock (12, 832, 1662, 930));
 
-    // Other pages cover the pedal and the dock.
+    // Other pages cover the unit.
     const auto pageArea = mock (126, 72, 1548, 822);   // between the INPUT and OUTPUT strips
     rigBrowser.setBounds (pageArea);
     settingsPage.setBounds (pageArea);

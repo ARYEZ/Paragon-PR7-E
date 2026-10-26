@@ -35,12 +35,12 @@ none of those products' names or branding go on the plugin.
 
 ## Using it
 
-- **The unit**, laid out like a DigiTech GSP21's foot controller: the screen centred along the top, the seven stomps in
-  a row, and under them five rigs, **BANK ▼** and **BANK ▲**. A rig pad loads that rig (its light shows the one loaded);
-  BANK steps through the rigs five at a time (within a bank, then on to the next) without loading one, and the row turns
-  to the loaded rig's five when you load one elsewhere.
-- **Stomps 1-7:** press a pad to switch it on or off; click its name to show its knobs
-  in the dock (ORACLE, EQ and DOMINION open their own pages).
+- **The unit**, laid out like a DigiTech GSP21's foot controller, four rows deep: the screen centred along the top, the
+  seven stomps in a row, and under them three rows of rigs (nineteen at a time), then **BANK ▼** and **BANK ▲**. A rig pad
+  loads that rig (its light shows the one loaded); BANK steps a bank at a time without loading one, and the rows turn to
+  the loaded rig's bank when you load one elsewhere. **PRESETS** browses every rig; **SAVE** / **SAVE AS** are under the
+  screen.
+- **Stomps 1-7:** press a pad to switch it on or off; click its name (or its block in the signal chain) to open its page.
 - **ECHELON (stomp 4, the EQ)**, inspired by FabFilter Pro-Q 4: up to 24 bands (bell, shelves, cuts, notch, band pass, tilt shelf,
   flat tilt, all pass; 6 to 96 dB/oct), each on the stereo signal or only its left, right, mid or side. Analog-matched
   curves with zero latency. On its page: double-click to add a band, drag its dot, mouse wheel for Q (or a cut's slope),

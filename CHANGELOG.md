@@ -2,6 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.17.0
+
+- **A four-row unit,** as you asked: the unit now reaches down to the signal chain, with the seven stomps on top and **three rows of rigs** under them, nineteen at a time, then **BANK ▼** and **BANK ▲** at the end of row 4. The signal chain stays as it was.
+  - **BANK** now steps a whole bank at a time (a bank with more than nineteen rigs, like C with its guitar and bass genre rigs, goes on over a second page). So all of bank A's factory rigs, its own and the genre vocals, are on screen at once: A01 to A07 on row 2, the genre vocals from A11 on rows 3 and 4. Empty pads show no number.
+  - **The three panels under the unit are gone** (the rig browser, the selected rig and ECHELON's overview), to make room. Nothing is lost: the **PRESETS** tab has the full rig browser, **SAVE** and **SAVE AS** are on the unit under the display, and each stomp's name opens its own page. ECHELON in the signal chain now opens ECHELON's page too, as the other blocks do.
+  - The rows are a little shorter than before (the pads keep their look) so all four fit, and the INPUT and OUTPUT strips run the unit's full height.
+
 ## 0.16.1
 
 - **The LIMITER pumps much less.** You were right: it pumped in every style. Two parts of my design caused it, and both are fixed:
