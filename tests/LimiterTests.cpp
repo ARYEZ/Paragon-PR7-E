@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 #include "rigs/FactoryRigs.h"
 #include "ui/EffectPanel.h"
+#include "ui/LimiterPage.h"
 #include "ui/Footswitch.h"
 
 #include <optional>
@@ -277,25 +278,28 @@ TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", 
     }
 }
 
-TEST_CASE ("Limiter in PR7-E: stomp 7 switches it, and its name opens its knobs in the dock", "[limit][ui]")
+TEST_CASE ("Limiter in PR7-E: stomp 7 switches it, and its name opens its own page (from 0.16.0)", "[limit][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     std::vector<Footswitch*> stomps;
-    std::vector<EffectPanel*> panels;
+    LimiterPage* page = nullptr;
     std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
     {
         if (auto* stomp = dynamic_cast<Footswitch*> (&c))
             stomps.push_back (stomp);
-        if (auto* panel = dynamic_cast<EffectPanel*> (&c))
-            panels.push_back (panel);
+        if (auto* p = dynamic_cast<LimiterPage*> (&c))
+            page = p;
         for (auto* child : c.getChildren())
             collect (*child);
     };
     collect (*editor);
     REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
+    REQUIRE (page != nullptr);
     CHECK_FALSE (stomps[6]->isPlaceholder());
-    CHECK (std::none_of (panels.begin(), panels.end(), [] (EffectPanel* p) { return p->isVisible(); }));
+    CHECK_FALSE (page->isVisible());
     stomps[6]->onSelect();
-    CHECK (std::count_if (panels.begin(), panels.end(), [] (EffectPanel* p) { return p->isVisible(); }) == 1);
+    CHECK (page->isVisible());
+    stomps[6]->toggle();
+    CHECK (processor.getParameters().getRawParameterValue (ParamIDs::limitOn)->load() > 0.5f);
 }

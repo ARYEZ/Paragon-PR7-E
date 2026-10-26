@@ -18,6 +18,7 @@
 #include "ui/SignalChain.h"
 #include "ui/OraclePage.h"
 #include "ui/CompPage.h"
+#include "ui/LimiterPage.h"
 
 // A side strip from the mockup: a title, a gain knob with its value
 // underneath, and a level meter.
@@ -84,7 +85,7 @@ private:
     // tunerBlock isn't in the chain (ORACLE, with the tuner, only listens): stomp 1's name opens its page.
     enum Block { eqBlock, dominionBlock, compBlock, limiterBlock, numBlocks, tunerBlock = numBlocks };
 
-    enum class Page { processor, presets, settings, eq, dominion, oracle, comp };   // eq, dominion, oracle, comp: those stomps' own pages
+    enum class Page { processor, presets, settings, eq, dominion, oracle, comp, limiter };   // eq to limiter: those stomps' own pages
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void applyFinish();   // colours the printed labels and redraws the unit in the current finish
@@ -162,6 +163,7 @@ private:
     DominionPage dominionPage;
     OraclePage oraclePage;
     CompPage compPage;
+    LimiterPage limiterPage;
     std::vector<juce::Component*> processorPage;
     Page page = Page::processor;
 

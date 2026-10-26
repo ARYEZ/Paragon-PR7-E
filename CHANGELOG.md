@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.16.0
+
+- **The LIMITER (stomp 7), inspired by FabFilter Pro-L 2**, as you asked. Our own design from its manual: FabFilter doesn't publish how Pro-L 2 limits, so this follows what the manual says each control does. Click LIMITER's name (or LIMITER in the signal chain) for its new page.
+  - **GAIN into a ceiling:** the tall GAIN slider drives the sound into the **OUTPUT** ceiling, which nothing passes.
+  - **Look-ahead:** the old limiter reacted to each peak only as it arrived, so when pushed it squared off the front of the peaks. The new one sees each peak coming (**LOOKAHEAD**, 0 to 5 ms; 1 ms by default) and glides the level down so it's exactly right when the peak arrives. In the tests, 5 ms of look-ahead halves the distortion on a bass note limited 5 dB. A slower stage follows the average level (**ATTACK**, **RELEASE**), and **LINK PEAKS** and **LINK RELEASE** set how much the left and right share each stage, as on Pro-L 2.
+  - **Eight styles** with plain names: **CLEAR** (stays out of the way), **PUNCHY** (a little pumping, for punch), **DYNAMIC** (lifts the hits before limiting, so they keep their attack), **ALL-ROUND**, **AGGRESSIVE** (soft-clips the top first: loud and edgy), **MODERN** (the default: lets go quickly after a lone peak), **GLUE** (starts working 6 dB under the ceiling, like a bus compressor) and **SAFE** (never distorts). Our own versions of what each of Pro-L 2's styles is described as doing; the tests check that they differ the way their names say. BRICK, SOFT and AUTO, the earlier limiter, are still there for your older projects.
+  - **TRUE PEAK:** keeps the peaks a converter or a streaming encoder rebuilds between the samples under the ceiling too, so -1 dBTP for Spotify really is -1. In the tests it holds within 0.1 dB (0.2 dB in the hardest case: AGGRESSIVE with no look-ahead or oversampling, where oversampling helps).
+  - **OVERSAMPLING** 2x, 4x or 8x (less distortion, at more CPU), **UNITY** (hear it at the level it came in, so louder doesn't fool you), **DELTA** (hear only what it takes away), **DC FILTER**, **TRIM**, and **DITHER** (24 to 16 bits, with three kinds of NOISE SHAPING) for a final CD-style master.
+  - **Meters:** the page scrolls the last few seconds (the level going in, in grey; what comes out, in the gradient; the gain reduction in red from the top, its biggest dips labelled; the loudness as a thin line; the ceiling dashed). Beside it, the true peak and gain reduction held since RESET (click them to reset too), and **loudness** to EBU R128: momentary, short term, integrated and range, against a **TARGET** (-14 LUFS for streaming, -9, -16, -23 or -24). In the tests the loudness meter reads EBU's own test signals to within 0.1 LU.
+  - **Delay:** look-ahead, true peak and oversampling make the sound a little late (1 ms by default, about 3.3 ms with TRUE PEAK; shown on the page). Your DAW makes up for it on playback, but not when you monitor live through it; set LOOKAHEAD to 0 with TRUE PEAK and OVERSAMPLING off for no delay at all.
+  - **Your projects and rigs sound the same:** the old THRESHOLD and MAKE UP become GAIN and OUTPUT, which gives exactly the same result. The mastering factory rigs (including the genre masters) now use MODERN with TRUE PEAK at -1 dBTP.
+  - **CPU:** at its heaviest (TRUE PEAK, 8x, 5 ms look-ahead) it uses about 8% of one core here.
+  - Not checked here: how it sounds on your music (I can't listen). Not built: presets, a side chain input, surround, and Pro-L 2's other display modes and K-meter scales.
+
 ## 0.15.0
 
 - **Genre rigs and presets for nine heavy styles:** modern metal, metalcore, djent, nu metal, argent metal, hard rock, grunge, symphonic metal and industrial. Our own reading of how each style is usually mixed, not any producer's settings (none are published as mixing presets), and not tuned by ear: starting points to adjust on your tracks.

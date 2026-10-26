@@ -28,7 +28,7 @@ stomps are still being planned, one at a time with the owner.
 | **4 EQ** | An EQ inspired by FabFilter Pro-Q 4 (our own design) | Works: 24 bands on its own page, any of them dynamic, and EQ Match |
 | **5 Dominion** | Resonance suppression inspired by oeksound soothe 3 (our own design) | Works: Soft and Hard, the depth curve, stereo/mid-side, tilts, delta and band listen, on its own page |
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
-| **7 Limiter** | The output trim / limiter from PR7-C, ported | Works: Brick, Soft and Auto, make up, mix, link, output trim |
+| **7 Limiter** | Inspired by FabFilter Pro-L 2 (our own design; PR7-C's limiter before 0.16.0) | Works: eight styles, look-ahead, true peak, oversampling, loudness meters, dither |
 
 Placeholder stomps show their name, keep their light off, and do nothing when pressed. Final names are the owner's;
 none of those products' names or branding go on the plugin.
@@ -73,9 +73,20 @@ none of those products' names or branding go on the plugin.
     LINK, with its gain-reduction meter.
   - **PRESET** (on its page): COMP's own presets, apart from the rigs (vocals, drums, instruments, mix and master,
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
-- **LIMITER (stomp 7)**, PR7-C's limiter: THRESHOLD (the ceiling), MAKE UP, MIX, LINK, and MODE (Brick, Soft or Auto),
-  then OUTPUT TRIM. It's last in the chain, after OUTPUT, so nothing can push a peak past it; no look-ahead, so no delay.
-  Its panel shows the gain reduction.
+- **LIMITER (stomp 7)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
+  OUTPUT, so nothing can push a peak past it. Click its name for its page.
+  - **GAIN** drives the sound into the **OUTPUT** ceiling. A fast stage looks ahead (**LOOKAHEAD**, 0 to 5 ms) and eases
+    into each peak so nothing passes the ceiling; a slower stage (**ATTACK**, **RELEASE**) follows the average level.
+    **LINK PEAKS** and **LINK RELEASE**: how much the two sides share each stage.
+  - **STYLE**: CLEAR, PUNCHY, DYNAMIC, ALL-ROUND, AGGRESSIVE, MODERN (the default), GLUE, SAFE; and BRICK, SOFT and AUTO,
+    the earlier limiter (PR7-C's), for older projects.
+  - **TRUE PEAK** keeps the peaks a converter rebuilds between the samples under the ceiling too (set OUTPUT to -1 dBTP
+    for streaming); **OVERSAMPLING** 2x to 8x; **UNITY** (hear it at the input's level), **DELTA** (hear only what it
+    takes away), **DC FILTER**, **TRIM**, and **DITHER** with **NOISE SHAPING**, last of all.
+  - The page shows the level going in and out, the gain reduction (the biggest dips labelled) and the loudness over the
+    last few seconds; the true peak and reduction held since RESET; and loudness (momentary, short term, integrated,
+    range, as EBU R128) against a TARGET (-14 LUFS for streaming).
+  - Look-ahead, true peak and oversampling delay the sound a little (shown on the page); your DAW makes up for it.
 - **ORACLE (stomp 1)**, melody to MIDI, inspired by what Melodyne and VariAudio do with a single line (our own design):
   switch it on and play the part in your DAW. It listens as the DAW plays (one voice or instrument at a time, up to
   1,500 Hz) and finds the notes: where each starts and ends, its pitch (the middle of what was sung, not the scoops or
@@ -102,7 +113,8 @@ none of those products' names or branding go on the plugin.
 - **Undo / redo:** the header arrows, UNDO / REDO on the unit, or Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac). **BYPASS** on
   the unit bypasses the whole plugin.
 - **SETTINGS:** the tuner's reference pitch and the unit's finish.
-- No latency: nothing in the chain looks ahead.
+- Delay: none, unless COMP's LOOK-AHEAD or the LIMITER's look-ahead, true peak or oversampling are on; your DAW makes
+  up for it on playback.
 
 ## Download
 

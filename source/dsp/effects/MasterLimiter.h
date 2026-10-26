@@ -155,6 +155,7 @@ namespace effects
 
         // How late process() makes the sound with these settings (0 when off or for BRICK, SOFT, AUTO).
         int getLatencySamples (const Settings&) const noexcept;
+        double getSampleRate() const noexcept { return sampleRate; }
 
         // Meters (the last block; dB).
         float getReductionDb (int channel) const noexcept { return reductionDb[(size_t) juce::jlimit (0, 1, channel)].load(); }

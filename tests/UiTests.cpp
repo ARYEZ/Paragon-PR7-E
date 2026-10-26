@@ -153,21 +153,24 @@ TEST_CASE ("The chain and the stomps pick what the dock shows; the graphic EQ is
     chains[0]->onSelect (0);
     CHECK (eqPanels[0]->isVisible());
 
-    // The LIMITER's name shows its knobs; the EQ button goes back.
+    // The LIMITER's name opens its own page (from 0.16.0); BACK TO PEDAL comes back to the dock's EQ.
     std::vector<Footswitch*> footswitches;
     findAll (*editor, footswitches);
     REQUIRE (footswitches.size() == 14);   // the seven stomps first, then the rig row
     footswitches[6]->onSelect();
-    CHECK_FALSE (eqPanels[0]->isVisible());
+    CHECK_FALSE (eqPanels[0]->isShowing());
 
+    std::vector<LimiterPage*> pages;
+    findAll (*editor, pages);
+    REQUIRE (pages.size() == 1);
+    CHECK (pages[0]->isVisible());
     std::vector<juce::TextButton*> buttons;
-    findAll (*editor, buttons);
-    const auto back = std::find_if (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "EQ"; });
+    findAll (*pages[0], buttons);
+    const auto back = std::find_if (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "BACK TO PEDAL"; });
     REQUIRE (back != buttons.end());
-    CHECK ((*back)->isVisible());
     (*back)->onClick();
+    CHECK_FALSE (pages[0]->isVisible());
     CHECK (eqPanels[0]->isVisible());
-    CHECK_FALSE ((*back)->isVisible());
 }
 
 TEST_CASE ("Seven stomps in a row over the rig row, labelled from the plan", "[ui]")

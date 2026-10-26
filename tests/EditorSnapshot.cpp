@@ -8,6 +8,7 @@
 #include "ui/EqPage.h"
 #include "ui/OraclePage.h"
 #include "ui/CompPage.h"
+#include "ui/LimiterPage.h"
 #include "ui/Finish.h"
 #include "ui/Footswitch.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -354,6 +355,68 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 }
                 display.select (preset != nullptr ? 0 : 2);
                 display.refresh();
+            }
+    }
+
+    // PARAGON_SNAPSHOT_PAGE=limiter opens the LIMITER's page (stomp 7's name).
+    // PARAGON_SNAPSHOT_LIMITER=1: on (MODERN, TRUE PEAK, -1 dBTP), with eight
+    // seconds of a drum loop over a noise bed driven 8 dB into it.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}) == "limiter")
+    {
+        std::vector<Footswitch*> stomps;
+        std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
+        {
+            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
+                stomps.push_back (stomp);
+            for (auto* child : c.getChildren())
+                collect (*child);
+        };
+        collect (*editor);
+        REQUIRE (stomps.size() >= 7);
+        stomps[6]->onSelect();
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LIMITER", {}) == "1")
+            if (auto* page = findType<LimiterPage> (*editor))
+            {
+                const auto set = [&] (const juce::String& id, float value)
+                {
+                    auto* p = processor.getParameters().getParameter (id);
+                    p->setValueNotifyingHost (p->convertTo0to1 (value));
+                };
+                set (ParamIDs::limitOn, 1.0f);
+                set (ParamIDs::limitMode, 8.0f);   // Modern
+                set (ParamIDs::limitTruePeak, 1.0f);
+                set (ParamIDs::limitGain, 8.0f);
+                set (ParamIDs::limitCeiling, -1.0f);
+                juce::Random random (9);
+                double b[3] {};
+                juce::AudioBuffer<float> buffer (2, 256);
+                juce::MidiBuffer midi;
+                for (int block = 0, n = 0; block < 1500; ++block)
+                {
+                    for (int i = 0; i < 256; ++i, ++n)
+                    {
+                        const auto white = random.nextFloat() * 2.0 - 1.0;
+                        b[0] = 0.99765 * b[0] + white * 0.0990460;
+                        b[1] = 0.96300 * b[1] + white * 0.2965164;
+                        b[2] = 0.57000 * b[2] + white * 1.0526913;
+                        const auto t = n / 48000.0;
+                        const auto beat = std::fmod (t, 0.5), half = std::fmod (t + 0.25, 1.0);
+                        const auto kick = 0.6 * std::exp (-beat * 14.0) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 + 60.0 * std::exp (-beat * 40.0)) * beat);
+                        const auto snare = half < 0.2 ? 0.45 * std::exp (-half * 22.0) * white : 0.0;
+                        const auto bed = 0.04 * (1.0 + 0.5 * std::sin (t * 0.9)) * (b[0] + b[1] + b[2] + white * 0.1848);
+                        const auto x = kick + snare + bed;
+                        buffer.setSample (0, i, (float) x);
+                        buffer.setSample (1, i, (float) (x * 0.9));
+                    }
+                    processor.processBlock (buffer, midi);
+                    if (block % 40 == 0)
+                    {
+                        page->getDisplay().refresh();
+                        page->refresh();
+                    }
+                }
+                page->getDisplay().refresh();
+                page->refresh();
             }
     }
 

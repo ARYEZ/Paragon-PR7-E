@@ -143,7 +143,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       eqPage (processorToShow),
       dominionPage (processorToShow),
       oraclePage (processorToShow),
-      compPage (processorToShow)
+      compPage (processorToShow),
+      limiterPage (processorToShow)
 {
     auto& state = processorToShow.getParameters();
 
@@ -275,13 +276,14 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     });
     footswitches[4]->onSelect = [this] { showPage (Page::dominion); };
     addStomp (6, "AUTO EQ", {}, noBlock, planned ("Adaptive EQ: to plan"));
-    // LIMITER: PR7-C's limiter and output trim, last in the chain; its name opens its knobs.
+    // LIMITER (inspired by Pro-L 2; PR7-C's before 0.16.0), last in the chain; its name opens its own page.
     addStomp (7, "LIMITER", { ParamIDs::limitOn }, limiterBlock, [this]
     {
         const auto ceiling = rawValue (ParamIDs::limitCeiling) + rawValue (ParamIDs::limitTrim);
         return "Ceiling " + juce::String (ceiling, 1) + (rawValue (ParamIDs::limitTruePeak) > 0.5f ? " dBTP, " : " dB, ")
                + valueText (ParamIDs::limitMode).toUpperCase();
     });
+    footswitches[6]->onSelect = [this] { showPage (Page::limiter); };
 
     // The bottom row, as the GSP21's in its five-preset mode: five rigs from
     // the current bank (pages of five), then BANK down and BANK up, which
@@ -355,6 +357,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addChildComponent (oraclePage);
     compPage.onClose = [this] { showPage (Page::processor); };
     addChildComponent (compPage);
+    limiterPage.onClose = [this] { showPage (Page::processor); };
+    addChildComponent (limiterPage);
 
     closePanel.setTooltip ("Back to the EQ");
     closePanel.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff151217));
@@ -375,6 +379,8 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
             showPage (Page::dominion);
         else if (block == compBlock)
             showPage (Page::comp);
+        else if (block == limiterBlock)
+            showPage (Page::limiter);
         else
             selectBlock (block);
     };
@@ -452,6 +458,7 @@ void MainView::showPage (Page newPage)
     compPage.setVisible (newPage == Page::comp);
     if (newPage == Page::comp)
         compPage.getDisplay().grabKeyboardFocus();
+    limiterPage.setVisible (newPage == Page::limiter);
     oraclePage.setVisible (newPage == Page::oracle);
     if (newPage == Page::oracle)
         oraclePage.getRoll().grabKeyboardFocus();
@@ -761,4 +768,5 @@ void MainView::resized()
     dominionPage.setBounds (pageArea);
     oraclePage.setBounds (pageArea);
     compPage.setBounds (pageArea);
+    limiterPage.setBounds (pageArea);
 }
