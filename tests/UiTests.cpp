@@ -377,3 +377,68 @@ TEST_CASE ("Rigs off the unit (0.18.0): the arrows step through them", "[ui][rig
 
     folder.deleteRecursively();
 }
+
+TEST_CASE ("Opening the window changes nothing in the sound: the rack units only read and show", "[ui][sound]")
+{
+    // Asked after 0.18.0 ("it sounds a little different"): two processors with
+    // the same rig, one with its window open and its timers running (the rack
+    // units' meters, keys and knobs), play the same stereo mix. The settings
+    // and the sound must come out identical, sample for sample.
+    const auto prepare = [] (ParagonX1AudioProcessor& processor)
+    {
+        processor.setPlayConfigDetails (2, 2, 48000.0, 256);
+        processor.prepareToPlay (48000.0, 256);
+        const auto* rig = processor.getRigLibrary().findFactory ("Modern Metal Mix");   // ECHELON, DOMINION, CONSTRICTOR
+        REQUIRE (rig != nullptr);
+        processor.loadRig (*rig);
+        set (processor, ParamIDs::limitOn, 1.0f);
+        set (processor, ParamIDs::limitMode, 8.0f);   // Modern
+        set (processor, ParamIDs::limitGain, 6.0f);
+        set (processor, ParamIDs::limitTruePeak, 1.0f);
+    };
+    ParagonX1AudioProcessor closed, open;
+    prepare (closed);
+    prepare (open);
+    juce::MemoryBlock before;
+    open.getStateInformation (before);
+
+    std::unique_ptr<juce::AudioProcessorEditor> editor (open.createEditor());
+    editor->setSize (1600, 900);
+    juce::MemoryBlock afterOpening;
+    open.getStateInformation (afterOpening);
+    CHECK (afterOpening == before);   // opening it set nothing
+
+    juce::Random random (3);
+    juce::AudioBuffer<float> a (2, 256), b (2, 256);
+    juce::MidiBuffer midi;
+    double largest = 0.0;
+    for (int block = 0, n = 0; block < 600; ++block)
+    {
+        for (int i = 0; i < 256; ++i, ++n)
+        {
+            const auto t = n / 48000.0, beat = std::fmod (t, 0.5);
+            const auto kick = 0.6 * std::exp (-beat * 14.0) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 + 60.0 * std::exp (-beat * 40.0)) * beat);
+            const auto left = kick + 0.05 * std::sin (2.0 * juce::MathConstants<double>::pi * 2500.0 * t) + 0.06 * (random.nextFloat() * 2.0 - 1.0);
+            const auto right = 0.9 * kick + 0.06 * (random.nextFloat() * 2.0 - 1.0);
+            for (auto* buffer : { &a, &b })
+            {
+                buffer->setSample (0, i, (float) left);
+                buffer->setSample (1, i, (float) right);
+            }
+        }
+        closed.processBlock (a, midi);
+        open.processBlock (b, midi);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 256; ++i)
+                largest = std::max (largest, (double) std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        if (block % 20 == 0)   // the window's timers (30 Hz) run as they would
+        {
+            juce::Thread::sleep (35);
+            juce::Timer::callPendingTimersSynchronously();
+        }
+    }
+    CHECK (largest == 0.0);
+    juce::MemoryBlock afterPlaying;
+    open.getStateInformation (afterPlaying);
+    CHECK (afterPlaying == before);
+}
