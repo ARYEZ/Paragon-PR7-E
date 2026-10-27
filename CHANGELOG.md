@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.1
+
+- **The LIMITER is cleaner on bass.** You said it still didn't sound right, so I measured it the way a mastering engineer would, and found a real fault in my design:
+  - **What was wrong:** driven into the ceiling, it turned the level down for each bass peak, let go a little in the gap before the next one, then pulled down again. On a low note that's a wobble 100 times a second. It distorted the bass (0.4% on a steady 50 Hz note in MODERN, driven 8 dB) and, worse, shook everything over it: a 1 kHz tone over the bass picked up "sidebands" only 37 to 46 dB under it. That sounds gritty or rough in the mids whenever the bass is loud.
+  - **DYNAMIC did it even when there was nothing to limit:** it mistook each cycle of a bass note for a small hit and lifted it.
+  - **What changed:** under limiting that goes on, it now holds at the level the music needs instead of letting go between the peaks, and eases back only as the music gets quieter (about 300 ms). After a single hit it still lets go quickly, so 0.16.1's fix for pumping stays. DYNAMIC now lifts only real hits (a jump of more than about 1.5 dB).
+  - **Measured, before and after:** steady bass distortion 0.4% to 0.01% (MODERN); the tone over the bass 37-50 dB clean to 67-78 dB clean in every style (MODERN -43 to -71 dB); DYNAMIC with nothing to limit -37 dB to none. AGGRESSIVE's clipper still distorts, on purpose.
+  - **The trade-off:** a dense mix comes out 0.2 to 0.35 dB quieter at the same GAIN, as some of the old loudness was that wobble. Turn GAIN up about 0.3 dB to get it back, now clean. Drums on their own are exactly as loud as before (DYNAMIC 0.3 dB quieter).
+- Also checked, and fine: under the ceiling it changes nothing at all; the same result at any buffer size (64 to 2048) and sample rate (44.1 to 96 kHz); left and right stay apart; the delay it reports to your DAW is right.
+- I can't listen here: these are measurements. If it still doesn't sound right, tell me what you hear (gritty, pumping, dull, flat, too quiet, clicks) and in which style, and I'll measure that.
+
 ## 0.18.0
 
 - **The four rows are now four rack units,** after the photo you sent (a Yamaha SPX90, a Lexicon PCM70 and a Roland SDE-3000 in a rack), drawn in the PR7's own parts: its footswitches, keys, knobs, LED bars and orange screen, in whichever finish you've chosen. In the signal chain's order: **row 1 ECHELON, row 2 DOMINION, row 3 CONSTRICTOR, row 4 the LIMITER.** Each unit, left to right:

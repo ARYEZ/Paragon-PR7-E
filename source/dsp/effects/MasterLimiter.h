@@ -119,6 +119,7 @@ namespace effects
                 double boxSum = 0.0;
                 float fast = 1.0f, slowDb = 0.0f, memory = 0.0f, meanSquare = 0.0f;
                 float sustainedDb = 0.0f, windowLeast = 1.0f;   // the usual reduction (see process)
+                float usualDb = 0.0f;                           // ...smoothed sample by sample (no steps each 20 ms)
                 int windowCount = 0;
                 TruePeakDetector detector;
             };
