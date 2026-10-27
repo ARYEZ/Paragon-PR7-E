@@ -387,7 +387,7 @@ TEST_CASE ("DOMINION: no clicks switching on; it runs in real time comfortably",
 
 //==============================================================================
 // In the plugin
-TEST_CASE ("DOMINION in PR7-E: stomp 5 switches it, and through the plugin a resonance is cut", "[dominion][plugin]")
+TEST_CASE ("DOMINION in PR7-E: its rack unit (row 2) switches it, and through the plugin a resonance is cut", "[dominion][plugin]")
 {
     ParagonX1AudioProcessor processor;
     processor.setPlayConfigDetails (2, 2, sampleRate, 256);
@@ -407,13 +407,13 @@ TEST_CASE ("DOMINION in PR7-E: stomp 5 switches it, and through the plugin a res
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
+    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
     REQUIRE (pages.size() == 1);
-    CHECK_FALSE (stomps[4]->isPlaceholder());
-    stomps[4]->toggle();
+    CHECK_FALSE (stomps[1]->isPlaceholder());
+    stomps[1]->toggle();
     CHECK (processor.getDominionSettings().on);
     CHECK_FALSE (pages[0]->isVisible());
-    stomps[4]->onSelect();
+    stomps[1]->onSelect();
     CHECK (pages[0]->isVisible());
 
     Resonant source;

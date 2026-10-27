@@ -585,7 +585,7 @@ TEST_CASE ("EQ display: double-click adds a band there, drag moves it, the wheel
     CHECK (display.getSelected() == -1);
 }
 
-TEST_CASE ("EQ page: stomp 4's name opens it; BACK returns to the pedal", "[eq][ui]")
+TEST_CASE ("EQ page: its rack unit's POWER name opens it; BACK returns to the pedal", "[eq][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -602,17 +602,17 @@ TEST_CASE ("EQ page: stomp 4's name opens it; BACK returns to the pedal", "[eq][
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
+    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
     REQUIRE (pages.size() == 1);
     CHECK_FALSE (pages[0]->isVisible());
 
-    stomps[3]->onSelect();
+    stomps[0]->onSelect();
     CHECK (pages[0]->isVisible());
-    CHECK_FALSE (stomps[3]->isVisible());   // the pedal is behind it
+    CHECK_FALSE (stomps[0]->getParentComponent()->isVisible());   // its rack unit, with the pedal, is behind it
 
     pages[0]->onClose();
     CHECK_FALSE (pages[0]->isVisible());
-    CHECK (stomps[3]->isVisible());
+    CHECK (stomps[0]->getParentComponent()->isVisible());
 }
 
 //==============================================================================

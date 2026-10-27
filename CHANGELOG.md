@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.0
+
+- **The four rows are now four rack units,** after the photo you sent (a Yamaha SPX90, a Lexicon PCM70 and a Roland SDE-3000 in a rack), drawn in the PR7's own parts: its footswitches, keys, knobs, LED bars and orange screen, in whichever finish you've chosen. In the signal chain's order: **row 1 ECHELON, row 2 DOMINION, row 3 CONSTRICTOR, row 4 the LIMITER.** Each unit, left to right:
+  - **POWER:** the unit's footswitch, switching it on or off, as the stomps did. Clicking the word POWER, the unit's name or **EDIT** opens its big page.
+  - **A ladder of LED bars** that lights as it works: ECHELON's shows how far its dynamic bands are moving, DOMINION's how deep it's cutting, CONSTRICTOR's its gain reduction, the LIMITER's the output level. They hold a peak and fall back like a meter's lights.
+  - **The screen:** ECHELON draws its curve with each band as a dot in the gradient, and its band count; DOMINION draws what it's cutting across the spectrum, with its DEPTH; CONSTRICTOR shows its gain reduction in big digits, with threshold, ratio, character and bands; the LIMITER shows the true peak (held two seconds) and the integrated loudness, with its style, look-ahead and oversampling, and a bar for how much it's turning down.
+  - **Three keys,** each with its light: ECHELON AUTO GAIN, ANALYSER, MATCH (opens EQ Match); DOMINION HARD (off is SOFT), M/S, DELTA; CONSTRICTOR VCA, OPTO, FET (its character); the LIMITER TRUE PEAK, UNITY, DELTA.
+  - **Two knobs:** ECHELON OUTPUT and GAIN SCALE; DOMINION DEPTH and DETAIL; CONSTRICTOR THRESHOLD and RATIO; the LIMITER GAIN and OUTPUT.
+  - **A small screen under EDIT:** ECHELON's auto gain, DOMINION's and CONSTRICTOR's preset (with a `*` once its settings have changed, as on their pages), the LIMITER's style.
+- **ORACLE is now a small key beside BYPASS** (it was stomp 1): it opens ORACLE's page, where you switch it on, and its light shows when it's listening.
+- **The rig pads and BANK are gone,** as agreed: change rigs with the arrows beside the screen, the header's **<** **>**, or the **PRESETS** tab.
+- INSERTS and AUTO EQ aren't on the unit for now. They'll get their place when they're built.
+- Nothing about the sound has changed, and projects and rigs load as before.
+
 ## 0.17.0
 
 - **A four-row unit,** as you asked: the unit now reaches down to the signal chain, with the seven stomps on top and **three rows of rigs** under them, nineteen at a time, then **BANK ▼** and **BANK ▲** at the end of row 4. The signal chain stays as it was.

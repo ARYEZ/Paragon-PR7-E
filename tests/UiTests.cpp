@@ -162,11 +162,11 @@ TEST_CASE ("The chain's blocks open their stomps' pages; there's no dock under t
     eqPages[0]->onClose();
     CHECK_FALSE (eqPages[0]->isVisible());
 
-    // The LIMITER's name opens its own page (from 0.16.0); BACK TO PEDAL comes back.
-    std::vector<Footswitch*> footswitches;
-    findAll (*editor, footswitches);
-    REQUIRE (footswitches.size() == 28);   // the seven stomps first, then the rigs, then BANK down and up
-    footswitches[6]->onSelect();
+    // The LIMITER's EDIT opens its own page; BACK TO PEDAL comes back.
+    std::vector<RackUnit*> racks;
+    findAll (*editor, racks);
+    REQUIRE (racks.size() == 4);
+    racks[3]->getEdit().onClick();
     CHECK (limiterPages[0]->isVisible());
     std::vector<juce::TextButton*> buttons;
     findAll (*limiterPages[0], buttons);
@@ -174,79 +174,118 @@ TEST_CASE ("The chain's blocks open their stomps' pages; there's no dock under t
     REQUIRE (back != buttons.end());
     (*back)->onClick();
     CHECK_FALSE (limiterPages[0]->isVisible());
-    CHECK (footswitches[0]->isVisible());   // back on the unit
+    CHECK (racks[0]->isVisible());   // back on the unit
 }
 
-TEST_CASE ("Seven stomps in a row over three rows of rigs, labelled from the plan", "[ui]")
+TEST_CASE ("Four rack units, one to a row in the chain's order, each switched by its POWER footswitch", "[ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     editor->setSize (1600, 900);
 
-    // Laid out as a DigiTech GSP21's foot controller, four rows deep (0.17.0):
-    // the seven stomps in a row, and under them nineteen rigs over three
-    // rows, then BANK down and BANK up.
+    // 0.18.0: the four rows are rack units, after the owner's photo of a
+    // rack (SPX90, PCM70, SDE-3000): ECHELON, DOMINION, CONSTRICTOR, LIMITER.
+    std::vector<RackUnit*> racks;
+    findAll (*editor, racks);
+    REQUIRE (racks.size() == 4);
+    const juce::StringArray names { "ECHELON", "DOMINION", "CONSTRICTOR", "LIMITER" };
+    for (size_t i = 0; i < racks.size(); ++i)
+    {
+        INFO (names[(int) i]);
+        CHECK (racks[i]->getSpec().name == names[(int) i]);
+        if (i > 0)
+        {
+            CHECK (racks[i]->getX() == racks[0]->getX());                                    // stacked, left edges level
+            CHECK (racks[i]->getY() >= racks[i - 1]->getBottom());                           // under the one above, not overlapping
+        }
+    }
+    CHECK (racks[3]->getBottom() <= editor->getChildComponent (0)->getHeight());
+
+    // The footswitches are the units' POWER switches: no stomps or rig pads any more.
     std::vector<Footswitch*> switches;
     findAll (*editor, switches);
-    REQUIRE (switches.size() == 28);
-    const std::vector<Footswitch*> stomps (switches.begin(), switches.begin() + 7);
-
-    const juce::StringArray names { "ORACLE", "CONSTRICTOR", "INSERTS", "ECHELON", "DOMINION", "AUTO EQ", "LIMITER" };
-    for (size_t i = 0; i < stomps.size(); ++i)
-        CHECK (stomps[i]->getTitle() == names[(int) i] + " footswitch");
-
-    const auto bounds = [&] (size_t i) { return switches[i]->getBoundsInParent(); };
-    for (size_t i = 0; i < 7; ++i)
+    REQUIRE (switches.size() == 4);
+    const auto isOn = [&] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load() > 0.5f; };
+    const char* onIds[] = { ParamIDs::eqOn, ParamIDs::domOn, ParamIDs::compOn, ParamIDs::limitOn };
+    for (size_t i = 0; i < racks.size(); ++i)
     {
-        INFO ("Column " << i + 1);
-        CHECK (bounds (i).getY() == bounds (0).getY());              // the stomps in one row
-        for (size_t row = 1; row < 4; ++row)
-        {
-            CHECK (bounds (i + 7 * row).getY() == bounds (7 * row).getY());               // each row level
-            CHECK (bounds (i + 7 * row).getY() >= bounds (i + 7 * (row - 1)).getBottom()); // under the one above, not overlapping
-            CHECK (bounds (i + 7 * row).getX() == bounds (i).getX());                      // in columns
-        }
-        if (i > 0)
-            CHECK (bounds (i).getX() >= bounds (i - 1).getRight());  // side by side, not overlapping
+        INFO (names[(int) i]);
+        CHECK (&racks[i]->getPower() == switches[i]);
+        REQUIRE_FALSE (isOn (onIds[i]));
+        racks[i]->getPower().toggle();
+        CHECK (isOn (onIds[i]));
     }
 
-    // ORACLE's name opens its own page, over the pedal; BACK TO PEDAL closes it.
+    // ORACLE, stomp 1 before 0.18.0, is a small key beside BYPASS: it opens
+    // its page, and is lit while ORACLE listens.
+    auto* oracleKey = dynamic_cast<juce::Button*> (editor->findChildWithID ("oracleKey"));
+    if (oracleKey == nullptr)
+    {
+        std::vector<juce::TextButton*> buttons;
+        findAll (*editor, buttons);
+        for (auto* b : buttons)
+            if (b->getComponentID() == "oracleKey")
+                oracleKey = b;
+    }
+    REQUIRE (oracleKey != nullptr);
     std::vector<OraclePage*> oraclePages;
     findAll (*editor, oraclePages);
     REQUIRE (oraclePages.size() == 1);
     CHECK_FALSE (oraclePages[0]->isVisible());
-    stomps[0]->onSelect();
+    oracleKey->onClick();
     CHECK (oraclePages[0]->isVisible());
-    REQUIRE (oraclePages[0]->onClose);
     oraclePages[0]->onClose();
     CHECK_FALSE (oraclePages[0]->isVisible());
+    CHECK_FALSE (oracleKey->getToggleState());   // its LED dark: ORACLE is off
+}
 
-    // ORACLE, COMP, EQ and LIMITER switch what PR7-E already has.
-    const auto isOn = [&] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load() > 0.5f; };
-    REQUIRE_FALSE (isOn (ParamIDs::tunerOn));
-    stomps[0]->toggle();
-    CHECK (isOn (ParamIDs::tunerOn));
-    stomps[3]->toggle();
-    CHECK (isOn (ParamIDs::eqOn));
-    stomps[6]->toggle();
-    CHECK (isOn (ParamIDs::limitOn));
-    stomps[1]->toggle();
-    CHECK (isOn (ParamIDs::compOn));
-    stomps[4]->toggle();
-    CHECK (isOn (ParamIDs::domOn));
-
-    // The rest aren't built yet: their pads change nothing and their names open nothing.
-    for (const auto i : { 2, 5 })
+TEST_CASE ("Rack units: the keys switch what they're labelled, the knobs are their parameters", "[ui]")
+{
+    ParagonX1AudioProcessor processor;
+    std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
+    std::vector<RackUnit*> racks;
+    findAll (*editor, racks);
+    REQUIRE (racks.size() == 4);
+    const auto value = [&] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load(); };
+    const auto press = [&] (RackUnit& rack, const juce::String& label)
     {
-        INFO (names[i]);
-        auto& stomp = *stomps[(size_t) i];
-        CHECK (stomp.isPlaceholder());
-        CHECK_FALSE (stomp.onSelect);
-        const auto before = processor.captureRig().parameters;
-        stomp.toggle();
-        CHECK_FALSE (stomp.isAnyOn());
-        CHECK (processor.captureRig().parameters == before);
-    }
+        for (const auto& key : rack.getSpec().keys)
+            if (key.label == label)
+            {
+                key.press();
+                return key.isOn();
+            }
+        FAIL ("no key " << label);
+        return false;
+    };
+
+    CHECK (press (*racks[0], "AUTO GAIN"));
+    CHECK (value (ParamIDs::eqAutoGain) > 0.5f);
+    CHECK (press (*racks[1], "DELTA"));
+    CHECK (value (ParamIDs::domDelta) > 0.5f);
+    CHECK (press (*racks[1], "HARD"));
+    CHECK (juce::roundToInt (value (ParamIDs::domMode)) == 1);
+    CHECK (press (*racks[2], "FET"));
+    CHECK (juce::roundToInt (value (ParamIDs::compCharacter)) == 2);
+    CHECK (press (*racks[2], "OPTO"));   // the characters are one choice: OPTO replaces FET
+    CHECK (juce::roundToInt (value (ParamIDs::compCharacter)) == 1);
+    const auto truePeak = value (ParamIDs::limitTruePeak) > 0.5f;
+    CHECK (press (*racks[3], "TRUE PEAK") == ! truePeak);
+
+    // ECHELON's MATCH opens ECHELON's page.
+    std::vector<EqPage*> eqPages;
+    findAll (*editor, eqPages);
+    REQUIRE (eqPages.size() == 1);
+    press (*racks[0], "MATCH");
+    CHECK (eqPages[0]->isVisible());
+
+    const std::array<std::array<const char*, 2>, 4> knobs { { { ParamIDs::eqOutput, ParamIDs::eqGainScale },
+                                                              { ParamIDs::domDepth, ParamIDs::domDetail },
+                                                              { ParamIDs::compThreshold, ParamIDs::compRatio },
+                                                              { ParamIDs::limitGain, ParamIDs::limitCeiling } } };
+    for (size_t i = 0; i < racks.size(); ++i)
+        for (size_t k = 0; k < 2; ++k)
+            CHECK (juce::String (racks[i]->getSpec().knobs[k].parameterId) == knobs[i][k]);
 }
 
 TEST_CASE ("BYPASS passes the clean guitar, on both channels", "[ui][bypass]")
@@ -318,48 +357,23 @@ TEST_CASE ("BYPASS is global: rigs don't change it and it doesn't mark them modi
     folder.deleteRecursively();
 }
 
-TEST_CASE ("The rig rows: a bank's rigs, nineteen at a time; BANK down and up change the bank shown, a pad loads its rig", "[ui][rigs]")
+TEST_CASE ("Rigs off the unit (0.18.0): the arrows step through them", "[ui][rigs]")
 {
     ParagonX1AudioProcessor processor;
     const auto folder = juce::File::createTempFile ("rigRow");
     processor.useRigFolder (folder);
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
 
-    std::vector<Footswitch*> switches;
-    findAll (*editor, switches);
-    REQUIRE (switches.size() == 28);
-    const std::vector<Footswitch*> rigs (switches.begin() + 7, switches.begin() + 26);
-    auto& bankDown = *switches[26];
-    auto& bankUp = *switches[27];
-    CHECK (bankDown.getName() == "BANK");
-    CHECK (bankUp.getName() == "BANK");
-
-    std::vector<const RigLibrary::Entry*> bankA;
-    for (const auto& e : processor.getRigLibrary().getEntries())
-        if (e.rig.bank == 0)
-            bankA.push_back (&e);
-    REQUIRE (bankA.size() > 7);
-    REQUIRE (bankA.size() <= rigs.size());
-
-    // Starting on the page with the current rig (none yet: the first page): all of bank A, the empty pads blank.
-    for (size_t i = 0; i < rigs.size(); ++i)
-        CHECK (rigs[i]->getName() == (i < bankA.size() ? bankA[i]->rig.name.toUpperCase() : juce::String ("-")));
-    CHECK (rigs[7]->getName() == "MODERN METAL VOCAL");   // A11 starts row 3
-
-    // A pad loads its rig and lights its LED.
-    rigs[9]->toggle();
-    CHECK (processor.getCurrentRig().name == bankA[9]->rig.name);
-    CHECK (rigs[9]->isAnyOn());
-    CHECK_FALSE (rigs[0]->isAnyOn());
-
-    // BANK up shows bank B without loading one; BANK down goes back.
-    bankUp.toggle();
-    CHECK (rigs[0]->getName() == "KICK PUNCH");
-    CHECK (processor.getCurrentRig().name == bankA[9]->rig.name);
-    CHECK_FALSE (rigs[9]->isAnyOn());
-    bankDown.toggle();
-    CHECK (rigs[9]->getName() == bankA[9]->rig.name.toUpperCase());
-    CHECK (rigs[9]->isAnyOn());
+    std::vector<InkArrowButton*> arrows;
+    findAll (*editor, arrows);
+    REQUIRE (arrows.size() == 2);   // up, then down, beside the screen
+    const auto& entries = processor.getRigLibrary().getEntries();
+    REQUIRE (entries.size() > 2);
+    processor.loadRig (entries[0]);
+    arrows[1]->onClick();
+    CHECK (processor.getCurrentRig().name == entries[1].rig.name);
+    arrows[0]->onClick();
+    CHECK (processor.getCurrentRig().name == entries[0].rig.name);
 
     folder.deleteRecursively();
 }

@@ -1,6 +1,7 @@
 #include "MainView.h"
 
 #include "Parameters.h"
+#include "ui/RackSpecs.h"
 #include "ui/Logo.h"
 
 namespace
@@ -29,20 +30,24 @@ namespace
     // include room for its glow), laid out as a DigiTech GSP21's foot
     // controller: the face runs its whole width (there's no expression
     // pedal bay since 0.12.0), with the display centred along the top and
-    // four long rows of seven footswitches (two before 0.17.0, with a dock
-    // under the unit), down to the signal chain.
+    // four rows down to the signal chain: a rack unit each since 0.18.0
+    // (footswitches before: seven stomps, then rigs; two rows and a dock
+    // before 0.17.0).
     const auto pedalBounds = mock (126, 68, 1552, 822);
     constexpr float faceLeft = 164, faceRight = 1514, faceBottom = 792;
 
-    // The small keys (UNDO REDO BYPASS): column centres, label and key tops.
-    constexpr float clusterX[] = { 470, 535, 600 };
+    // The small keys (UNDO REDO BYPASS ORACLE): column centres, label and key tops.
+    constexpr float clusterX[] = { 426, 488, 550, 612 };
     constexpr float clusterLabelY = 132, clusterButtonY = 149;
 
-    // The four rows of footswitches: seven across the face, each `switchPitch` wide.
+    // The four rows: each a raised panel holding a rack unit, as wide as
+    // seven footswitches were (`switchPitch` each, before 0.18.0).
     constexpr float switchLeft = 176, switchPitch = 190;
     constexpr float switchRowY[] = { 244, 380, 516, 652 }, switchHeight = 118;
-    // A stomp whose name opens no block (not built yet, or no knobs).
-    constexpr int noBlock = -1;
+    juce::Rectangle<float> rowPanel (int row)
+    {
+        return mockF (switchLeft - 2, switchRowY[row] - 8, switchLeft + 7.0f * switchPitch + 2, switchRowY[row] + switchHeight + 6);
+    }
 
     void styleInkLabel (juce::Label& label, float size)
     {
@@ -182,7 +187,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     rigUp.onClick = [this] { audioProcessor.stepRig (-1); };
     rigDown.onClick = [this] { audioProcessor.stepRig (1); };
 
-    for (auto* button : { &pedalSave, &pedalSaveAs, &bypassButton, &undoPedal, &redoPedal })
+    for (auto* button : { &pedalSave, &pedalSaveAs, &bypassButton, &undoPedal, &redoPedal, &oraclePedal })
         button->getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     pedalSave.onClick = [this] { saveRig(); };
     pedalSaveAs.onClick = [this] { rigBrowser.promptSaveAs(); };
@@ -193,9 +198,14 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     redoPedal.setTooltip ("Redo (Ctrl+Shift+Z)");
     undoPedal.onClick = [this] { audioProcessor.undo(); };
     redoPedal.onClick = [this] { audioProcessor.redo(); };
+    // ORACLE (melody to MIDI, with the tuner) was stomp 1 until 0.18.0; its key
+    // opens its page (with its own on switch) and is lit while it listens.
+    oraclePedal.setComponentID ("oracleKey");
+    oraclePedal.setTooltip ("ORACLE: melody to MIDI, and the tuner on the screen. Opens its page; lit while it's listening.");
+    oraclePedal.onClick = [this] { showPage (Page::oracle); };
 
     // The cluster's labels are printed in red, as in the mockup.
-    for (auto* label : { &undoLabel, &redoLabel, &bypassLabel })
+    for (auto* label : { &undoLabel, &redoLabel, &bypassLabel, &oracleLabel })
     {
         styleInkLabel (*label, 9.5f);
         label->setColour (juce::Label::textColourId, ParagonColours::glow.darker (0.15f));
@@ -223,114 +233,30 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
         refreshRig();
     };
 
-    // The seven stomps, from the plan in CLAUDE.md. Each press turns its
-    // block on or off; clicking its name shows the block's knobs. Most aren't
-    // built yet: those have no parameters (so nothing is saved under an ID we
-    // might regret), a dark LED and a pad that does nothing.
-    const auto addStomp = [this, &state] (int number, const char* name, juce::StringArray onIds, int block,
-                                          std::function<juce::String()> describe)
+    // The four rack units, one to a row, in the signal chain's order.
+    RackActions actions;
+    actions.openPage = [this] (int unit)
     {
-        auto& footswitch = footswitches[(size_t) number - 1];
-        footswitch = std::make_unique<Footswitch> (number, name, state, std::move (onIds));
-        footswitch->describe = std::move (describe);
-        if (block != noBlock)
-            footswitch->onSelect = [this, block] { selectBlock (block); };
-        footswitch->refresh();
+        constexpr Page pages[] = { Page::eq, Page::dominion, Page::comp, Page::limiter };
+        showPage (pages[unit]);
     };
-    const auto planned = [] (const char* what) { return [what] { return juce::String (what); }; };
-
-    // Top row. ORACLE (with the tuner) transcribes a part to MIDI as the DAW
-    // plays it, and shows its pitch on the screen (the TUNER key and holding
-    // TAP switch it too); its name opens its own page.
-    addStomp (1, "ORACLE", { ParamIDs::tunerOn }, tunerBlock, [this]
+    actions.openMatch = [this]
     {
-        const auto notes = audioProcessor.getOracle().getNotes().size();
-        return notes == 0 ? juce::String ("Melody to MIDI") : juce::String ((int) notes) + (notes == 1 ? " note" : " notes");
-    });
-    footswitches[0]->onSelect = [this] { showPage (Page::oracle); };
-    // COMP: PR7-C's compressor with bands (inspired by Pro-MB), after the EQ; its name opens its own page.
-    addStomp (2, "CONSTRICTOR", { ParamIDs::compOn }, compBlock, [this]
-    {
-        return valueText (ParamIDs::compCharacter) + "  " + valueText (ParamIDs::compThreshold) + "  " + valueText (ParamIDs::compRatio);
-    });
-    footswitches[1]->onSelect = [this] { showPage (Page::comp); };
-    addStomp (3, "INSERTS", {}, noBlock, planned ("Plugin slots: to plan"));
-
-    // EQ (inspired by FabFilter Pro-Q 4): its name opens its own page.
-    addStomp (4, "ECHELON", { ParamIDs::eqOn }, eqBlock, [this]
-    {
-        const auto settings = audioProcessor.getEqSettings();
-        const auto bands = std::count_if (settings.bands.begin(), settings.bands.end(), [] (const eq::Band& b) { return b.used; });
-        return bands == 0 ? juce::String ("No bands yet") : juce::String (bands) + (bands == 1 ? " band" : " bands");
-    });
-    footswitches[3]->onSelect = [this] { showPage (Page::eq); };
-    // DOMINION: resonance suppression, inspired by soothe; its name opens its own page.
-    addStomp (5, "DOMINION", { ParamIDs::domOn }, dominionBlock, [this]
-    {
-        return valueText (ParamIDs::domMode) + "  DEPTH " + valueText (ParamIDs::domDepth) + "  DETAIL " + valueText (ParamIDs::domDetail);
-    });
-    footswitches[4]->onSelect = [this] { showPage (Page::dominion); };
-    addStomp (6, "AUTO EQ", {}, noBlock, planned ("Adaptive EQ: to plan"));
-    // LIMITER (inspired by Pro-L 2; PR7-C's before 0.16.0), last in the chain; its name opens its own page.
-    addStomp (7, "LIMITER", { ParamIDs::limitOn }, limiterBlock, [this]
-    {
-        const auto ceiling = rawValue (ParamIDs::limitCeiling) + rawValue (ParamIDs::limitTrim);
-        return "Ceiling " + juce::String (ceiling, 1) + (rawValue (ParamIDs::limitTruePeak) > 0.5f ? " dBTP, " : " dB, ")
-               + valueText (ParamIDs::limitMode).toUpperCase();
-    });
-    footswitches[6]->onSelect = [this] { showPage (Page::limiter); };
-
-    // Rows 2 to 4: a bank's rigs (up to nineteen at a time), then BANK down
-    // and BANK up, which change the rigs shown without loading one, as on
-    // the GSP21.
-    for (size_t i = 0; i < rigSwitches.size(); ++i)
-    {
-        auto& rigSwitch = rigSwitches[i];
-        rigSwitch = std::make_unique<Footswitch> ((int) i + 1, "-", state, juce::StringArray());
-        rigSwitch->onPress = [this, i]
-        {
-            const auto pages = rigPages();
-            if (juce::isPositiveAndBelow (rigPage, (int) pages.size()) && i < pages[(size_t) rigPage].size())
-                audioProcessor.loadRig (*pages[(size_t) rigPage][i]);
-            refreshRig();
-        };
-        rigSwitch->onSelect = rigSwitch->onPress;
-        rigSwitch->isLit = [this, i]
-        {
-            const auto pages = rigPages();
-            return juce::isPositiveAndBelow (rigPage, (int) pages.size()) && i < pages[(size_t) rigPage].size()
-                && pages[(size_t) rigPage][i] == audioProcessor.findCurrentRigEntry();
-        };
-    }
-    const auto addBankSwitch = [this, &state] (std::unique_ptr<Footswitch>& bankSwitch, const char* name, int direction)
-    {
-        bankSwitch = std::make_unique<Footswitch> (0, name, state, juce::StringArray());
-        bankSwitch->setNumberText (direction < 0 ? juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xbc"))    // down triangle
-                                                 : juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb2")));  // up triangle
-        bankSwitch->onPress = [this, direction] { showRigPage (rigPage + direction); };
-        bankSwitch->onSelect = bankSwitch->onPress;
-        bankSwitch->isLit = [] { return false; };
-        bankSwitch->describe = [this]
-        {
-            const auto pages = rigPages();
-            if (! juce::isPositiveAndBelow (rigPage, (int) pages.size()) || pages[(size_t) rigPage].empty())
-                return juce::String();
-            return "Showing " + pages[(size_t) rigPage].front()->rig.getSlotName() + " to " + pages[(size_t) rigPage].back()->rig.getSlotName();
-        };
+        showPage (Page::eq);
+        eqPage.showMatch (true);
     };
-    addBankSwitch (bankDown, "BANK", -1);
-    addBankSwitch (bankUp, "BANK", 1);
+    actions.analyserOn = [this] { return eqPage.isAnalyserOn(); };
+    actions.setAnalyser = [this] (bool on) { eqPage.setAnalyser (on); };
+    auto specs = makeRackSpecs (audioProcessor, std::move (actions));
+    for (size_t i = 0; i < racks.size(); ++i)
+        racks[i] = std::make_unique<RackUnit> (state, std::move (specs[i]));
 
     addAndMakeVisible (pedal);   // first, so everything on the pedal sits on top of it
     processorPage = { &pedal, &display, &rigUp, &rigDown, &pedalSave, &pedalSaveAs, &bypassButton,
-                      &undoPedal, &redoPedal, &undoLabel, &redoLabel, &bypassLabel,
+                      &undoPedal, &redoPedal, &oraclePedal, &undoLabel, &redoLabel, &bypassLabel, &oracleLabel,
                       &rigLevelKnob, &presenceKnob, &rigLevelLabel, &presenceLabel };
-    for (auto& footswitch : footswitches)
-        processorPage.push_back (footswitch.get());
-    for (auto& rigSwitch : rigSwitches)
-        processorPage.push_back (rigSwitch.get());
-    processorPage.push_back (bankDown.get());
-    processorPage.push_back (bankUp.get());
+    for (auto& rack : racks)
+        processorPage.push_back (rack.get());
     for (auto* component : processorPage)
         addAndMakeVisible (component);
 
@@ -362,7 +288,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addChildComponent (rigBrowser);
     addChildComponent (settingsPage);
 
-    selectBlock (eqBlock);   // the dock shows the graphic EQ until another block is picked
+    selectBlock (eqBlock);
 
     audioProcessor.rigBroadcaster.addChangeListener (this);
     changeListenerCallback (nullptr);
@@ -395,14 +321,8 @@ float MainView::rawValue (const char* parameterId) const
 
 void MainView::selectBlock (int block)
 {
-    // The selected block: its stomp's name underlined, and its block in the chain marked.
+    // The selected block, marked in the chain.
     selectedBlock = block;
-
-    const int footswitchBlocks[] = { tunerBlock, compBlock, noBlock, eqBlock, dominionBlock, noBlock, limiterBlock };
-    static_assert (std::size (footswitchBlocks) == std::tuple_size_v<decltype (footswitches)>);
-    for (size_t i = 0; i < footswitches.size(); ++i)
-        footswitches[i]->setSelected (footswitchBlocks[i] == block);
-
     signalChain.setSelected (block);
 }
 
@@ -444,7 +364,6 @@ void MainView::refreshRig()
     if (rigNameButton.getButtonText() != headerText)
         rigNameButton.setButtonText (headerText);
 
-    followCurrentRig();
     display.setContents ({ entry != nullptr ? entry->rig.number : 0, rig.name,
                            entry != nullptr ? Rig::bankName (entry->rig.bank) : juce::String(), modified, bypassed, tunerState });
 }
@@ -465,6 +384,7 @@ void MainView::refreshPerformance()
     redoButton.setEnabled (canRedo);
     undoPedal.setToggleState (canUndo, juce::dontSendNotification);   // lit while there's something to undo
     redoPedal.setToggleState (canRedo, juce::dontSendNotification);
+    oraclePedal.setToggleState (rawValue (ParamIDs::tunerOn) > 0.5f, juce::dontSendNotification);
 
     // The tuner runs only while it's switched on.
     auto& parameters = audioProcessor.getParameters();
@@ -504,63 +424,6 @@ bool MainView::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-std::vector<std::vector<const RigLibrary::Entry*>> MainView::rigPages() const
-{
-    // Each bank's rigs in order, as many to a page as there are pads
-    // (nineteen); banks with no rigs have none, and a bank with more goes on
-    // over another page.
-    std::vector<std::vector<const RigLibrary::Entry*>> pages;
-    int bank = -1;
-    for (const auto& entry : audioProcessor.getRigLibrary().getEntries())
-    {
-        if (entry.rig.bank != bank || pages.back().size() == rigSwitches.size())
-            pages.emplace_back();
-        bank = entry.rig.bank;
-        pages.back().push_back (&entry);
-    }
-    return pages;
-}
-
-void MainView::showRigPage (int index)
-{
-    const auto pages = rigPages();
-    rigPage = pages.empty() ? 0 : ((index % (int) pages.size()) + (int) pages.size()) % (int) pages.size();
-    for (size_t i = 0; i < rigSwitches.size(); ++i)
-    {
-        const auto* entry = rigPage < (int) pages.size() && i < pages[(size_t) rigPage].size() ? pages[(size_t) rigPage][i] : nullptr;
-        rigSwitches[i]->setNumberText (entry != nullptr ? entry->rig.getSlotName() : juce::String());   // an empty pad: no number
-        rigSwitches[i]->setName (entry != nullptr ? entry->rig.name.toUpperCase() : juce::String ("-"));
-        rigSwitches[i]->refresh();
-    }
-    bankDown->refresh();
-    bankUp->refresh();
-}
-
-void MainView::followCurrentRig()
-{
-    // When the rig changes (loaded here, from the browser, the arrows or a
-    // project), the rig rows turn to its page; BANK on its own doesn't load one.
-    const auto* current = audioProcessor.findCurrentRigEntry();
-    const auto file = current != nullptr ? current->file : juce::File();
-    const auto name = current != nullptr ? current->rig.name : juce::String();
-    const auto pages = rigPages();
-    if (file == followedRig && name == followedRigName && ! pages.empty())
-    {
-        showRigPage (rigPage);   // the library may have changed (a rig saved, renamed)
-        return;
-    }
-    followedRig = file;
-    followedRigName = name;
-    for (size_t index = 0; index < pages.size(); ++index)
-        for (const auto* entry : pages[index])
-            if (entry == current)
-            {
-                showRigPage ((int) index);
-                return;
-            }
-    showRigPage (rigPage);
-}
-
 void MainView::saveRig()
 {
     // Factory rigs and never-saved sounds need a name first.
@@ -576,7 +439,7 @@ void MainView::applyFinish()
     // The cluster's names: red over black keys; over neon keys red was
     // hard to read, so they're printed in the unit's ink (white on pearl
     // black, dark on pearl white). HOLD TO TUNER stays red.
-    for (auto* label : { &undoLabel, &redoLabel, &bypassLabel })
+    for (auto* label : { &undoLabel, &redoLabel, &bypassLabel, &oracleLabel })
         label->setColour (juce::Label::textColourId, Finish::neonKeys() ? Finish::ink() : Finish::printedRed());
     pedal.refinish();
     repaint();
@@ -663,9 +526,8 @@ void MainView::resized()
     PedalBody::Geometry geometry;
     // The face plate sits inside the rim with the same rim showing all round.
     geometry.face = local (mockF (faceLeft, 94, faceRight, faceBottom));
-    const auto rowRight = switchLeft + 7.0f * switchPitch;
-    for (const auto rowY : switchRowY)   // a raised panel for each row
-        geometry.sections.push_back (local (mockF (switchLeft - 2, rowY - 8, rowRight + 2, rowY + switchHeight + 6)));
+    for (int row = 0; row < (int) racks.size(); ++row)   // a raised panel for each row, its rack unit on it
+        geometry.sections.push_back (local (rowPanel (row)));
     geometry.badge = local (mockF (196, 117, 394, 207));
 
     // The display centred along the top, as on the GSP21's controller, with
@@ -681,16 +543,17 @@ void MainView::resized()
     pedalSave.setBounds (mock (displayLeft + 60, 209, displayLeft + 126, 227));
     pedalSaveAs.setBounds (mock (displayLeft + 212, 209, displayLeft + 296, 227));
 
-    // UNDO REDO BYPASS between the badge and the display: a red label printed above each key.
+    // UNDO REDO BYPASS ORACLE between the badge and the display: a red label printed above each key.
     const auto placeKey = [] (juce::Label& label, juce::Button& button, int column)
     {
         const auto x = clusterX[column];
-        label.setBounds (mock (x - 30, clusterLabelY, x + 30, clusterLabelY + 14));
+        label.setBounds (mock (x - 28, clusterLabelY, x + 28, clusterLabelY + 14));
         button.setBounds (mock (x - 18, clusterButtonY, x + 18, clusterButtonY + 19));
     };
     placeKey (undoLabel, undoPedal, 0);
     placeKey (redoLabel, redoPedal, 1);
     placeKey (bypassLabel, bypassButton, 2);
+    placeKey (oracleLabel, oraclePedal, 3);
 
     // RIG LEVEL and PRESENCE on the right.
     rigLevelKnob.setBounds (mock (1260, 98, 1374, 212));
@@ -698,21 +561,9 @@ void MainView::resized()
     presenceKnob.setBounds (mock (1383, 98, 1497, 212));
     presenceLabel.setBounds (mock (1380, 196, 1500, 214));
 
-    // The seven stomps along the top row; the rigs over rows 2 to 4, then BANK down and up.
-    const auto placeSwitch = [] (Footswitch& footswitch, int row, int column)
-    {
-        // Each edge rounded on its own, so neighbours meet exactly.
-        const auto edge = [] (float x) { return juce::roundToInt (x * mockScale); };
-        const auto x = switchLeft + (float) column * switchPitch;
-        footswitch.setBounds (juce::Rectangle<int>::leftTopRightBottom (edge (x), edge (switchRowY[row]),
-                                                                        edge (x + switchPitch), edge (switchRowY[row] + switchHeight)));
-    };
-    for (size_t i = 0; i < footswitches.size(); ++i)
-        placeSwitch (*footswitches[i], 0, (int) i);
-    for (size_t i = 0; i < rigSwitches.size(); ++i)
-        placeSwitch (*rigSwitches[i], 1 + (int) i / rigsPerRow, (int) i % rigsPerRow);
-    placeSwitch (*bankDown, 3, 5);
-    placeSwitch (*bankUp, 3, 6);
+    // The four rack units, each on its row's panel.
+    for (size_t i = 0; i < racks.size(); ++i)
+        racks[i]->setBounds (rowPanel ((int) i).toNearestInt());
 
     signalChain.setBounds (mock (12, 832, 1662, 930));
 

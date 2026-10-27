@@ -17,8 +17,8 @@ alongside all of them and keeps its own rigs and settings.
 
 ## Status
 
-PR7-E is at the start of its own life: it has its own name and identity, and its seven-stomp face, but most of the
-stomps are still being planned, one at a time with the owner.
+PR7-E is at the start of its own life: it has its own name and identity, and its face of four rack units, but some of
+the stomps are still being planned, one at a time with the owner.
 
 | Stomp | Plan | Now |
 |---|---|---|
@@ -30,18 +30,19 @@ stomps are still being planned, one at a time with the owner.
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
 | **7 Limiter** | Inspired by FabFilter Pro-L 2 (our own design; PR7-C's limiter before 0.16.0) | Works: eight styles, look-ahead, true peak, oversampling, loudness meters, dither |
 
-Placeholder stomps show their name, keep their light off, and do nothing when pressed. Final names are the owner's;
-none of those products' names or branding go on the plugin.
+Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, the LIMITER)
+and ORACLE's key; the placeholders will get their place when they're built. Final names are the owner's; none of those
+products' names or branding go on the plugin.
 
 ## Using it
 
-- **The unit**, laid out like a DigiTech GSP21's foot controller, four rows deep: the screen centred along the top, the
-  seven stomps in a row, and under them three rows of rigs (nineteen at a time), then **BANK ▼** and **BANK ▲**. A rig pad
-  loads that rig (its light shows the one loaded); BANK steps a bank at a time without loading one, and the rows turn to
-  the loaded rig's bank when you load one elsewhere. **PRESETS** browses every rig; **SAVE** / **SAVE AS** are under the
-  screen.
-- **Stomps 1-7:** press a pad to switch it on or off; click its name (or its block in the signal chain) to open its page.
-- **ECHELON (stomp 4, the EQ)**, inspired by FabFilter Pro-Q 4: up to 24 bands (bell, shelves, cuts, notch, band pass, tilt shelf,
+- **The unit:** the screen centred along the top (the arrows beside it step through rigs; **SAVE** / **SAVE AS** under it),
+  then four rack units, one to a row in the chain's order (styled after a rack of classic studio processors, in the PR7's
+  own parts): **ECHELON, DOMINION, CONSTRICTOR, LIMITER.** Each has a **POWER** footswitch, a ladder of LED bars that
+  meters what it's doing, a screen with its readout, three keys, two knobs, and **EDIT** (or click its name) for its page,
+  over a small screen with its preset or style. **PRESETS** browses every rig.
+- **Small keys:** UNDO, REDO, BYPASS, and **ORACLE** (opens its page; lit while it listens).
+- **ECHELON (row 1, the EQ)**, inspired by FabFilter Pro-Q 4: up to 24 bands (bell, shelves, cuts, notch, band pass, tilt shelf,
   flat tilt, all pass; 6 to 96 dB/oct), each on the stereo signal or only its left, right, mid or side. Analog-matched
   curves with zero latency. On its page: double-click to add a band, drag its dot, mouse wheel for Q (or a cut's slope),
   Alt-click to switch it off, right-click for its menu, Delete to remove it; hold SOLO to hear only what a band works on.
@@ -54,13 +55,13 @@ none of those products' names or branding go on the plugin.
   - **EQ Match** (MATCH, top of the page): listens to your track and a reference (another part of the song, a song
     file, or a saved reference), then proposes bands that make your track's tone like the reference's. DETAIL (a few
     broad bands or more, finer ones) and AMOUNT (how much of the difference), then ADD BANDS.
-- **DOMINION (stomp 5)**, inspired by oeksound soothe 3: finds what rings, whistles or builds up as the track plays and
+- **DOMINION (row 2)**, inspired by oeksound soothe 3: finds what rings, whistles or builds up as the track plays and
   turns just that down. MODE (Soft: what sticks out, at any level; Hard: what's loud), DEPTH, DETAIL, ATTACK, RELEASE; a
   graph of what it's cutting, with a depth curve of up to 8 bands to steer it; stereo or mid/side, LINK and FOCUS; tilts
   for the lows and highs; MAX CUT, WET TRIM, DELTA, MIX and OUT. Click its name for its page. Zero latency.
   **PRESET** (on its page): its own presets, apart from the rigs (vocals, drums, instruments, mix and master, creative,
   and under GENRES the vocal, guitars and mix of each genre the genre rigs use), and your own, saved in "Dominion Presets" beside your rigs. A preset changes only DOMINION's settings.
-- **CONSTRICTOR (stomp 2, the compressor)**, after ECHELON; click its name for its page.
+- **CONSTRICTOR (row 3, the compressor)**, after DOMINION; EDIT opens its page.
   - **Bands** (up to six, inspired by FabFilter Pro-MB, our own design): each works on its own part of the spectrum.
     Double-click the graph to add one; drag its dot sideways to move it and up or down for RANGE, drag its edges.
     MODE and RANGE give four kinds: COMPRESS turns loud parts down (RANGE below 0) or brings quiet parts up (above 0);
@@ -73,7 +74,7 @@ none of those products' names or branding go on the plugin.
     LINK, with its gain-reduction meter.
   - **PRESET** (on its page): COMP's own presets, apart from the rigs (vocals, drums, instruments, mix and master,
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
-- **LIMITER (stomp 7)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
+- **LIMITER (row 4)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
   OUTPUT, so nothing can push a peak past it. Click its name for its page.
   - **GAIN** drives the sound into the **OUTPUT** ceiling. A fast stage looks ahead (**LOOKAHEAD**, 0 to 5 ms) and eases
     into each peak so nothing passes the ceiling; a slower stage (**ATTACK**, **RELEASE**) follows the average level.
@@ -87,7 +88,7 @@ none of those products' names or branding go on the plugin.
     last few seconds; the true peak and reduction held since RESET; and loudness (momentary, short term, integrated,
     range, as EBU R128) against a TARGET (-14 LUFS for streaming).
   - Look-ahead, true peak and oversampling delay the sound a little (shown on the page); your DAW makes up for it.
-- **ORACLE (stomp 1)**, melody to MIDI, inspired by what Melodyne and VariAudio do with a single line (our own design):
+- **ORACLE (the small key beside BYPASS)**, melody to MIDI, inspired by what Melodyne and VariAudio do with a single line (our own design):
   switch it on and play the part in your DAW. It listens as the DAW plays (one voice or instrument at a time, up to
   1,500 Hz) and finds the notes: where each starts and ends, its pitch (the middle of what was sung, not the scoops or
   the vibrato) and its velocity. Playing a passage again replaces what it heard there. Click its name for its page: the

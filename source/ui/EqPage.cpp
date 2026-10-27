@@ -140,6 +140,13 @@ EqPage::EqPage (ParagonX1AudioProcessor& p)
     startTimerHz (30);
 }
 
+void EqPage::setAnalyser (bool on)
+{
+    showInput.setToggleState (on, juce::dontSendNotification);
+    showOutput.setToggleState (on, juce::dontSendNotification);
+    display.showInput = display.showOutput = on;
+}
+
 void EqPage::showMatch (bool shouldShow)
 {
     if (shouldShow == matching)

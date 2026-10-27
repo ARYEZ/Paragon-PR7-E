@@ -14,6 +14,7 @@
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/PedalBody.h"
 #include "ui/PerformanceControls.h"
+#include "ui/RackUnit.h"
 #include "ui/RigBrowser.h"
 #include "ui/SignalChain.h"
 #include "ui/OraclePage.h"
@@ -58,9 +59,8 @@ private:
 // the whole view to the window size, staying sharp (everything is vectors).
 //
 //   header:  logo | PROCESSOR PRESETS SETTINGS | < rig > | undo redo save settings
-//   middle:  INPUT | the unit, laid out as a DigiTech GSP21's foot controller:
-//            the display along the top, the 7 stomps over RIG 1-5, BANK down, BANK up | OUTPUT
-//   dock:    RIG BROWSER | SELECTED RIG | the EQ's overview (or a block's knobs)
+//   middle:  INPUT | the unit: the display along the top, then four rack
+//            units (ECHELON, DOMINION, CONSTRICTOR, the LIMITER), one to a row | OUTPUT
 //   bottom:  SIGNAL CHAIN
 class MainView final : public juce::Component,
                        private juce::ChangeListener,
@@ -93,11 +93,6 @@ private:
 
     void selectBlock (int block);
     void refreshPerformance();
-    // The bottom row: which five rigs it shows (pages of five within each
-    // bank, in the order the rig arrows step), and the page with the current rig.
-    std::vector<std::vector<const RigLibrary::Entry*>> rigPages() const;
-    void showRigPage (int index);
-    void followCurrentRig();
     void showPage (Page);
     void refreshRig();
     void saveRig();
@@ -125,24 +120,17 @@ private:
     juce::TextButton pedalSave { "SAVE" }, pedalSaveAs { "SAVE AS..." }, bypassButton;
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
-    // The small keys: UNDO REDO BYPASS
-    juce::TextButton undoPedal, redoPedal;
-    juce::Label undoLabel { {}, "UNDO" }, redoLabel { {}, "REDO" }, bypassLabel { {}, "BYPASS" };
+    // The small keys: UNDO REDO BYPASS ORACLE (ORACLE's opens its page, lit while it listens)
+    juce::TextButton undoPedal, redoPedal, oraclePedal;
+    juce::Label undoLabel { {}, "UNDO" }, redoLabel { {}, "REDO" }, bypassLabel { {}, "BYPASS" }, oracleLabel { {}, "ORACLE" };
 
     juce::Slider rigLevelKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
                  presenceKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     juce::AudioProcessorValueTreeState::SliderAttachment rigLevelAttachment, presenceAttachment;
     juce::Label rigLevelLabel { {}, "RIG LEVEL" }, presenceLabel { {}, "PRESENCE" };
-    // The seven stomps along the top row.
-    std::array<std::unique_ptr<Footswitch>, 7> footswitches;
-    // Rows 2 to 4 (0.17.0): nineteen rigs, seven to a row, then BANK down and
-    // BANK up at the end of row 4.
-    static constexpr int rigsPerRow = 7;
-    std::array<std::unique_ptr<Footswitch>, 19> rigSwitches;
-    std::unique_ptr<Footswitch> bankDown, bankUp;
-    int rigPage = 0;
-    juce::File followedRig;   // the current rig the rig rows last followed
-    juce::String followedRigName;
+    // The four rows (0.18.0): a rack unit each, in the chain's order. Each
+    // one's POWER footswitch turns it on or off; its name and EDIT open its page.
+    std::array<std::unique_ptr<RackUnit>, 4> racks;
 
     // The tuner's note for the screen
     TunerReader tunerReader;
@@ -150,9 +138,8 @@ private:
     int ticks = 0;
 
     // The signal chain. (The dock above it, with the rig browser, the
-    // selected rig and ECHELON's overview, went in 0.17.0 for rows 3 and 4:
-    // PRESETS browses the rigs, SAVE / SAVE AS are on the unit, and each
-    // stomp's name opens its page.)
+    // selected rig and ECHELON's overview, went in 0.17.0: PRESETS browses
+    // the rigs, SAVE / SAVE AS are on the unit, and each unit opens its page.)
     SignalChain signalChain;
     int selectedBlock = eqBlock;
 

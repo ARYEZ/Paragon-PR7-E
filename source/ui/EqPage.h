@@ -24,6 +24,9 @@ public:
     bool isShowingDynamics() const noexcept { return dynamicRow; }
     void showMatch (bool);   // EQ Match's panel in place of the band controls
     bool isShowingMatch() const noexcept { return matching; }
+    // The analyser (IN and OUT together), for ECHELON's ANALYSER key on the rack.
+    bool isAnalyserOn() const noexcept { return showInput.getToggleState() || showOutput.getToggleState(); }
+    void setAnalyser (bool on);
     EqMatchPanel& getMatchPanel() noexcept { return matchPanel; }
     void refreshControls() { timerCallback(); }   // what the timer does (30 times a second)
 

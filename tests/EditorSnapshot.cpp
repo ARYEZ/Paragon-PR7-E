@@ -11,6 +11,7 @@
 #include "ui/LimiterPage.h"
 #include "ui/Finish.h"
 #include "ui/Footswitch.h"
+#include "ui/RackUnit.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -199,6 +200,54 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
             juce::Timer::callPendingTimersSynchronously();
             juce::Thread::sleep (40);
         }
+    // PARAGON_SNAPSHOT_RACK=1: the four rack units at work (0.18.0): the
+    // "Modern Metal Mix" rig (ECHELON, DOMINION and CONSTRICTOR) with the
+    // LIMITER on (MODERN, 8 dB in), a drum loop over a noise bed through it,
+    // and the editor's timers run so the ladders and screens read it.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_RACK", {}) == "1")
+    {
+        processor.setPlayConfigDetails (2, 2, 48000.0, 256);
+        processor.prepareToPlay (48000.0, 256);
+        if (const auto* rig = processor.getRigLibrary().findFactory ("Modern Metal Mix"))
+            processor.loadRig (*rig);
+        const auto set = [&] (const juce::String& id, float value)
+        {
+            auto* p = processor.getParameters().getParameter (id);
+            p->setValueNotifyingHost (p->convertTo0to1 (value));
+        };
+        set (ParamIDs::limitOn, 1.0f);
+        set (ParamIDs::limitMode, 8.0f);   // Modern
+        set (ParamIDs::limitTruePeak, 1.0f);
+        set (ParamIDs::limitGain, 8.0f);
+        juce::Random random (9);
+        double b[3] {};
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (int block = 0, n = 0; block < 1500; ++block)
+        {
+            for (int i = 0; i < 256; ++i, ++n)
+            {
+                const auto white = random.nextFloat() * 2.0 - 1.0;
+                b[0] = 0.99765 * b[0] + white * 0.0990460;
+                b[1] = 0.96300 * b[1] + white * 0.2965164;
+                b[2] = 0.57000 * b[2] + white * 1.0526913;
+                const auto t = n / 48000.0;
+                const auto beat = std::fmod (t, 0.5), half = std::fmod (t + 0.25, 1.0);
+                const auto kick = 0.5 * std::exp (-beat * 14.0) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 + 60.0 * std::exp (-beat * 40.0)) * beat);
+                const auto snare = half < 0.2 ? 0.35 * std::exp (-half * 22.0) * white : 0.0;
+                const auto bed = 0.08 * (b[0] + b[1] + b[2] + white * 0.1848);
+                const auto x = kick + snare + bed;
+                buffer.setSample (0, i, (float) x);
+                buffer.setSample (1, i, (float) (x * 0.9));
+            }
+            processor.processBlock (buffer, midi);
+            if (block > 1400 && block % 10 == 0)   // the timers (30 Hz) fire only when they're due
+            {
+                juce::Thread::sleep (35);
+                juce::Timer::callPendingTimersSynchronously();
+            }
+        }
+    }
     if (showPresets)
         if (auto* tab = dynamic_cast<juce::Button*> (findById (*editor, "presetsTab")))
             tab->onClick();
@@ -207,18 +256,18 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
             tab->onClick();
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}) == "eq")
     {
-        // Stomp 4's name opens the EQ's page.
-        std::vector<Footswitch*> stomps;
+        // Its rack unit's EDIT opens its page.
+        std::vector<RackUnit*> racks;
         std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
         {
-            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
-                stomps.push_back (stomp);
+            if (auto* rack = dynamic_cast<RackUnit*> (&c))
+                racks.push_back (rack);
             for (auto* child : c.getChildren())
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (stomps.size() >= 7);   // the stomps come first, then the rig row
-        stomps[3]->onSelect();
+        REQUIRE (racks.size() == 4);
+        racks[0]->getEdit().onClick();
     }
     if (auto* display = findType<EqDisplay> (*editor))
     {
@@ -237,17 +286,18 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
     // whistle) through it, so the graph shows its cuts.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}) == "dominion")
     {
-        std::vector<Footswitch*> stomps;
+        // Its rack unit's EDIT opens its page.
+        std::vector<RackUnit*> racks;
         std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
         {
-            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
-                stomps.push_back (stomp);
+            if (auto* rack = dynamic_cast<RackUnit*> (&c))
+                racks.push_back (rack);
             for (auto* child : c.getChildren())
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (stomps.size() >= 7);   // the stomps come first, then the rig row
-        stomps[4]->onSelect();
+        REQUIRE (racks.size() == 4);
+        racks[1]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DOMINION", {}) == "1")
             if (auto* display = findType<DominionDisplay> (*editor))
             {
@@ -295,17 +345,18 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
     // with a loud kick-like 60 Hz and a harsh 3 kHz through it, band 3 selected.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}) == "comp")
     {
-        std::vector<Footswitch*> stomps;
+        // Its rack unit's EDIT opens its page.
+        std::vector<RackUnit*> racks;
         std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
         {
-            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
-                stomps.push_back (stomp);
+            if (auto* rack = dynamic_cast<RackUnit*> (&c))
+                racks.push_back (rack);
             for (auto* child : c.getChildren())
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (stomps.size() >= 7);
-        stomps[1]->onSelect();
+        REQUIRE (racks.size() == 4);
+        racks[2]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_COMP", {}) == "1")
             if (auto* page = findType<CompPage> (*editor))
             {
@@ -363,17 +414,18 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
     // seconds of a drum loop over a noise bed driven 8 dB into it.
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}) == "limiter")
     {
-        std::vector<Footswitch*> stomps;
+        // Its rack unit's EDIT opens its page.
+        std::vector<RackUnit*> racks;
         std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
         {
-            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
-                stomps.push_back (stomp);
+            if (auto* rack = dynamic_cast<RackUnit*> (&c))
+                racks.push_back (rack);
             for (auto* child : c.getChildren())
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (stomps.size() >= 7);
-        stomps[6]->onSelect();
+        REQUIRE (racks.size() == 4);
+        racks[3]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LIMITER", {}) == "1")
             if (auto* page = findType<LimiterPage> (*editor))
             {
@@ -489,17 +541,9 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
             processor.setPlayHead (nullptr);
         }
 
-        std::vector<Footswitch*> stomps;
-        std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
-        {
-            if (auto* stomp = dynamic_cast<Footswitch*> (&c))
-                stomps.push_back (stomp);
-            for (auto* child : c.getChildren())
-                collect (*child);
-        };
-        collect (*editor);
-        REQUIRE (stomps.size() >= 7);   // the stomps come first, then the rig row
-        stomps[0]->onSelect();
+        // ORACLE's key, beside BYPASS, opens its page.
+        if (auto* key = dynamic_cast<juce::Button*> (findById (*editor, "oracleKey")))
+            key->onClick();
         if (auto* page = findType<OraclePage> (*editor))
         {
             page->getRoll().fit();

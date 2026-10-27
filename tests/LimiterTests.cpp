@@ -278,7 +278,7 @@ TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", 
     }
 }
 
-TEST_CASE ("Limiter in PR7-E: stomp 7 switches it, and its name opens its own page (from 0.16.0)", "[limit][ui]")
+TEST_CASE ("Limiter in PR7-E: its rack unit (row 4) switches it, and its POWER name opens its own page", "[limit][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -294,12 +294,12 @@ TEST_CASE ("Limiter in PR7-E: stomp 7 switches it, and its name opens its own pa
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
+    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
     REQUIRE (page != nullptr);
-    CHECK_FALSE (stomps[6]->isPlaceholder());
+    CHECK_FALSE (stomps[3]->isPlaceholder());
     CHECK_FALSE (page->isVisible());
-    stomps[6]->onSelect();
+    stomps[3]->onSelect();
     CHECK (page->isVisible());
-    stomps[6]->toggle();
+    stomps[3]->toggle();
     CHECK (processor.getParameters().getRawParameterValue (ParamIDs::limitOn)->load() > 0.5f);
 }
