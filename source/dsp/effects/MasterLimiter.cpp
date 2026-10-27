@@ -177,6 +177,7 @@ namespace effects
                 c.memory = 0.0f;
                 c.meanSquare = 0.0f;
                 c.sustainedDb = 0.0f;
+                c.usualDb = 0.0f;
                 c.windowLeast = 1.0f;
                 c.windowCount = 0;
                 c.detector.reset();
@@ -198,6 +199,7 @@ namespace effects
             const auto windowLength = juce::jmax (1, (int) (0.02 * sampleRate));
             const auto deeperCoefficient = 1.0f - std::exp (-20.0f / 1000.0f);     // per 20 ms window: 1 s
             const auto shallowerCoefficient = 1.0f - std::exp (-20.0f / 300.0f);   // 300 ms
+            const auto usualCoefficient = coefficientFor (sampleRate, 20.0f);
             const auto boostAttack = coefficientFor (sampleRate, 0.5f), boostRelease = coefficientFor (sampleRate, 40.0f);
             const auto boostSlowAttack = coefficientFor (sampleRate, 15.0f), boostSlowRelease = coefficientFor (sampleRate, 250.0f);
             const auto clipKnee = p.ceiling * 0.7943282f, clipTop = p.ceiling * 1.2589254f;   // 2 dB either side
@@ -212,9 +214,14 @@ namespace effects
                     const auto level = juce::jmax (std::abs (z[0]), std::abs (z[1]));
                     boostFast += (level - boostFast) * (level > boostFast ? boostAttack : boostRelease);
                     boostSlow += (level - boostSlow) * (level > boostSlow ? boostSlowAttack : boostSlowRelease);
-                    if (boostFast > 1.0e-5f && boostSlow > 1.0e-5f && boostFast > boostSlow)
+                    // Only a real jump in level (over 1.5 dB above the level just
+                    // before, eased in over 1.5 dB) is a hit: a steady note's own
+                    // up and down, a bass note's cycles, isn't (0.18.1: before,
+                    // it lifted each cycle a little, which distorted).
+                    if (boostFast > 1.0e-5f && boostSlow > 1.0e-5f && boostFast > boostSlow * 1.1885f)
                     {
-                        const auto boost = toGain (juce::jmin (4.0f, 0.5f * toDb (boostFast / boostSlow)));
+                        const auto jumpDb = toDb (boostFast / boostSlow) - 1.5f;
+                        const auto boost = toGain (juce::jmin (4.0f, 0.5f * (jumpDb < 1.5f ? jumpDb * jumpDb / 3.0f : jumpDb - 0.75f)));
                         z[0] *= boost;
                         z[1] *= boost;
                     }
@@ -320,16 +327,24 @@ namespace effects
 
                     // Recovery: never above what's needed (it only rises towards it).
                     // Back up to the usual level quickly, whatever the music: so
-                    // a hit's extra dip doesn't linger (that's pumping). Only around
-                    // the usual level, under limiting that goes on and on, slower
-                    // (less distortion there).
+                    // a hit's extra dip doesn't linger (that's pumping). Under
+                    // limiting that goes on, no further than the usual level
+                    // (0.18.1): before, it let go a little between the peaks, after
+                    // each cycle of a bass note, and pulled down again at the next,
+                    // a wobble that distorted the bass and roughened everything over
+                    // it. The usual level eases back as the music gets quieter
+                    // (300 ms); a lone peak (no limiting going on) still lets go all
+                    // the way, quickly.
+                    channel.usualDb += (channel.sustainedDb - channel.usualDb) * usualCoefficient;
+                    const auto holdDb = channel.memory * channel.usualDb;
+                    const auto target = juce::jmin (boxed, toGain (-holdDb));
                     if (boxed < channel.fast)
                         channel.fast = boxed;
-                    else
+                    else if (target > channel.fast)
                     {
                         const auto deeper = -toDb (channel.fast) > channel.sustainedDb + 0.5f;
                         const auto releaseMs = character.fastReleaseMs * p.fastReleaseScale * (deeper ? 1.0f : 1.0f + character.adapt * channel.memory);
-                        channel.fast += (boxed - channel.fast) * coefficientFor (sampleRate, releaseMs);
+                        channel.fast += (target - channel.fast) * coefficientFor (sampleRate, releaseMs);
                     }
                     const auto fastDb = -toDb (channel.fast);
                     // Only limiting that goes on and on slows the recovery (less distortion

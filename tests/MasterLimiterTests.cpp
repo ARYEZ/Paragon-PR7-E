@@ -384,6 +384,61 @@ TEST_CASE ("Limiter: the styles sound different: AGGRESSIVE distorts most, SAFE 
     CHECK (safe < clear);
 }
 
+TEST_CASE ("Limiter: a steady bass note driven into it stays clean, and doesn't roughen what's over it (0.18.1)", "[limit]")
+{
+    // Up to 0.18.0 the transient stage let go a little after each cycle of a
+    // bass note and pulled down again at the next: on 50 Hz driven 8 dB in,
+    // 0.4% distortion (MODERN), and a 1 kHz tone over it shaken by the bass
+    // with sidebands only 37 to 46 dB under it. It now holds at the level the
+    // note needs. AGGRESSIVE's clipper distorts on purpose.
+    const auto mix = [] (bool withTone)
+    {
+        auto bass = sine (50.0, -7.0f, 3 * 48000);
+        if (withTone)
+        {
+            const auto tone = sine (1000.0, -20.0f, 3 * 48000);
+            for (int c = 0; c < 2; ++c)
+                bass.addFrom (c, 0, tone, c, 0, bass.getNumSamples());
+        }
+        return bass;
+    };
+    const auto bass = mix (false), both = mix (true);
+    for (const auto style : newStyles)
+    {
+        if (style == Style::aggressive)
+            continue;
+        INFO ("style " << (int) style);
+        CHECK (thd (through (settings (style, 8.0f), bass), 50.0, 2 * 48000, 48000) < 0.0005);   // under 0.05%
+
+        const auto out = through (settings (style, 8.0f), both);
+        const auto* x = out.getReadPointer (0);
+        const auto tone = partialLevel (x, 2 * 48000, 48000, 1000.0);
+        double sidebands = 0.0;
+        for (const auto k : { -3, -2, -1, 1, 2, 3 })
+            sidebands += juce::square (partialLevel (x, 2 * 48000, 48000, 1000.0 + 50.0 * k));
+        const auto sidebandsDb = juce::Decibels::gainToDecibels (std::sqrt (sidebands) / tone);
+        INFO ("the bass's sidebands round 1 kHz: " << sidebandsDb << " dB under it");
+        CHECK (sidebandsDb < -55.0);   // was -37 to -46 dB; PUNCHY, which moves most on purpose, is now about -60
+    }
+}
+
+TEST_CASE ("Limiter: DYNAMIC leaves a steady note alone: only real hits are lifted (0.18.1)", "[limit]")
+{
+    // Under the ceiling, nothing to limit: up to 0.18.0 DYNAMIC lifted each
+    // cycle of a bass note a little, which shook a tone over it (-37 dB).
+    auto both = sine (50.0, -9.0f, 3 * 48000);
+    const auto tone = sine (1000.0, -20.0f, 3 * 48000);
+    for (int c = 0; c < 2; ++c)
+        both.addFrom (c, 0, tone, c, 0, both.getNumSamples());
+    const auto out = through (settings (Style::dynamic, 0.0f), both);
+    const auto* x = out.getReadPointer (0);
+    double sidebands = 0.0;
+    for (const auto k : { -2, -1, 1, 2 })
+        sidebands += juce::square (partialLevel (x, 2 * 48000, 48000, 1000.0 + 50.0 * k));
+    CHECK (juce::Decibels::gainToDecibels (std::sqrt (sidebands) / partialLevel (x, 2 * 48000, 48000, 1000.0)) < -90.0);
+    CHECK (thd (out, 50.0, 2 * 48000, 48000) < 0.0001);
+}
+
 TEST_CASE ("Limiter: GLUE starts working under the ceiling, as a bus compressor would; CLEAR doesn't", "[limit]")
 {
     // A steady tone peaking 3 dB under the ceiling: CLEAR leaves it be; GLUE,
