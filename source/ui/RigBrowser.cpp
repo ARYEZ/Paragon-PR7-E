@@ -27,7 +27,7 @@ namespace
     juce::String describeBlocks (const Rig& rig)
     {
         const std::pair<const char*, const char*> blocks[] = {
-            { ParamIDs::tunerOn, "Tuner" }, { ParamIDs::eqOn, "EQ" } };
+            { ParamIDs::tunerOn, "Tuner" }, { ParamIDs::eqOn, "Echelon" } };
 
         juce::StringArray on;
         for (const auto& [id, name] : blocks)

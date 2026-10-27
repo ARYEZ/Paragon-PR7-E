@@ -4,6 +4,7 @@
 #include "DominionPresets.h"
 #include "Parameters.h"
 #include "dsp/dominion/Dominion.h"
+#include "dsp/effects/MasterLimiter.h"
 #include "dsp/eq/EqDesign.h"
 
 // PR7-E's factory rigs (0.6.0): starting points for the EQ stomp, filed by
@@ -507,15 +508,17 @@ std::vector<Rig> makeFactoryRigs()
                 rig.notes << d.note;
             }
 
-    // The mastering rigs end with the LIMITER (0.8.0): BRICK, a -1 dB ceiling,
-    // as a safety net against overs rather than to make it louder.
+    // The mastering rigs end with the LIMITER (0.8.0; from 0.16.0 its MODERN
+    // style with TRUE PEAK): a -1 dBTP ceiling, the most streaming services
+    // allow, as a safety net against overs rather than to make it louder.
     for (auto& rig : rigs)
         if (rig.bank == mastering)
         {
             rig.parameters[ParamIDs::limitOn] = 1.0f;
-            rig.parameters[ParamIDs::limitThreshold] = -1.0f;
-            rig.parameters[ParamIDs::limitMode] = 0.0f;   // Brick
-            rig.notes << " The LIMITER (stomp 7) holds a -1 dB ceiling.";
+            rig.parameters[ParamIDs::limitCeiling] = -1.0f;
+            rig.parameters[ParamIDs::limitMode] = (float) effects::limiter::Style::modern;
+            rig.parameters[ParamIDs::limitTruePeak] = 1.0f;
+            rig.notes << " The LIMITER (stomp 7) holds a -1 dBTP ceiling (true peak).";
         }
 
     return rigs;

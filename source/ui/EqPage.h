@@ -17,11 +17,16 @@ public:
     explicit EqPage (ParagonX1AudioProcessor&);
     ~EqPage() override;
 
+    static constexpr int titleWidth = 104;   // the name, at the top bar's left
+
     std::function<void()> onClose;
     EqDisplay& getDisplay() noexcept { return display; }
     bool isShowingDynamics() const noexcept { return dynamicRow; }
     void showMatch (bool);   // EQ Match's panel in place of the band controls
     bool isShowingMatch() const noexcept { return matching; }
+    // The analyser (IN and OUT together), for ECHELON's ANALYSER key on the rack.
+    bool isAnalyserOn() const noexcept { return showInput.getToggleState() || showOutput.getToggleState(); }
+    void setAnalyser (bool on);
     EqMatchPanel& getMatchPanel() noexcept { return matchPanel; }
     void refreshControls() { timerCallback(); }   // what the timer does (30 times a second)
 
@@ -96,6 +101,6 @@ private:
     void timerCallback() override;
 
     ParagonX1AudioProcessor& processor;
-    juce::TextButton open { "OPEN EQ" };
+    juce::TextButton open { "OPEN ECHELON" };
     juce::Rectangle<float> graph;
 };

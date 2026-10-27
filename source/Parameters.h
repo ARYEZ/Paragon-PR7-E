@@ -99,12 +99,31 @@ namespace ParamIDs
     inline constexpr auto limitMix       = "limitMix";         // %
     inline constexpr auto limitLink      = "limitLink";        // both channels together
     inline constexpr auto limitTrim      = "limitTrim";        // OUTPUT TRIM, dB, after the limiter
+    // From 0.16.0, inspired by Pro-L 2 (version hint 36): GAIN drives into the
+    // OUTPUT ceiling. limitThreshold and limitMakeUp became GAIN and OUTPUT
+    // (projects and rigs from before are converted when they load); they're
+    // kept only so old automation and files still find them.
+    inline constexpr auto limitGain          = "limitGain";          // dB
+    inline constexpr auto limitCeiling       = "limitCeiling";       // OUTPUT, dBFS (dBTP with TRUE PEAK)
+    inline constexpr auto limitLookahead     = "limitLookahead";     // ms
+    inline constexpr auto limitAttack        = "limitAttack";        // ms, the release stage
+    inline constexpr auto limitRelease       = "limitRelease";       // ms
+    inline constexpr auto limitLinkTransient = "limitLinkTransient"; // %
+    inline constexpr auto limitLinkRelease   = "limitLinkRelease";   // %
+    inline constexpr auto limitTruePeak      = "limitTruePeak";
+    inline constexpr auto limitOversampling  = "limitOversampling";  // choice: Off, 2x, 4x, 8x
+    inline constexpr auto limitDither        = "limitDither";        // choice: Off, 24 ... 16 bits
+    inline constexpr auto limitShaping       = "limitShaping";       // choice: None, Basic, Optimized, Weighted
+    inline constexpr auto limitUnity         = "limitUnity";         // listening aids: not in rigs
+    inline constexpr auto limitDelta         = "limitDelta";
+    inline constexpr auto limitDcFilter      = "limitDcFilter";
 
     // Global settings: kept when switching rigs. Everything else is part of a rig.
     // The expression pedal's position is global for the same reason a real
     // pedal's is: it's where your foot is, not part of the sound. What the
     // pedal is assigned to, and its range, are saved with each rig.
-    inline const juce::StringArray notInRigs { inputGain, outputGain, bypass, tunerOn, expression };
+    // The LIMITER's UNITY and DELTA are for listening while you set it, not part of a sound.
+    inline const juce::StringArray notInRigs { inputGain, outputGain, bypass, tunerOn, expression, limitUnity, limitDelta };
 }
 
 namespace ExpressionTargets
@@ -129,10 +148,30 @@ namespace ParamRanges
     // The LIMITER's, as on PR7-C.
     inline constexpr float limitThresholdMin = -20.0f, limitMakeUpMax = 12.0f;
     inline constexpr float limitTrimMin = -12.0f, limitTrimMax = 12.0f;
-    inline const juce::StringArray limitModes { "Brick", "Soft", "Auto" };   // saved by index: only append
+    // Its styles: PR7-C's three, then (0.16.0) eight of our own after Pro-L 2's (effects::limiter::Style).
+    inline const juce::StringArray limitModes { "Brick", "Soft", "Auto",   // saved by index: only append
+                                                "Clear", "Punchy", "Dynamic", "All-round", "Aggressive", "Modern", "Glue", "Safe" };
+    inline constexpr int limitDefaultMode = 8;   // Modern
+    inline constexpr float limitGainMax = 30.0f, limitCeilingMin = -30.0f;
 
     inline constexpr float gainMinDb = -24.0f;
     inline constexpr float gainMaxDb = 24.0f;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+// Projects and rigs from before 0.16.0 set the LIMITER with PR7-C's THRESHOLD
+// and MAKE UP. Limiting at THRESHOLD then adding MAKE UP sounds exactly like
+// driving GAIN (= MAKE UP) into an OUTPUT ceiling at THRESHOLD + MAKE UP; a
+// ceiling that would be above 0 dB goes into OUTPUT TRIM instead.
+struct ConvertedLimiter { float gain, ceiling, trim; };
+inline ConvertedLimiter convertOldLimiter (float threshold, float makeUp, float trim)
+{
+    auto ceiling = threshold + makeUp;
+    if (ceiling > 0.0f)
+    {
+        trim += ceiling;
+        ceiling = 0.0f;
+    }
+    return { makeUp, juce::jmax (ParamRanges::limitCeilingMin, ceiling), juce::jlimit (ParamRanges::limitTrimMin, ParamRanges::limitTrimMax, trim) };
+}

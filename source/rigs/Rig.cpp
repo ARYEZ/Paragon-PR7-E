@@ -1,5 +1,7 @@
 #include "Rig.h"
 
+#include "Parameters.h"
+
 namespace
 {
     // Bump when the file layout changes in a way older code can't read.
@@ -15,7 +17,9 @@ namespace
     // 34: PR7-E 0.10.0, DOMINION (off by default: nothing to migrate).
     // 35: PR7-E 0.13.0, COMP's bands (none by default) and compWide (on by
     //     default, so an older rig, which doesn't mention it, sounds as it did).
-    constexpr int parameterVersion = 35;
+    // 36: PR7-E 0.16.0, the LIMITER after Pro-L 2: THRESHOLD and MAKE UP
+    //     become GAIN and OUTPUT (see convertOldLimiter).
+    constexpr int parameterVersion = 36;
 
     const juce::Identifier rigTag { "ParagonRig" };
     const juce::Identifier parameterTag { "Param" };
@@ -82,6 +86,16 @@ std::optional<Rig> Rig::fromXml (const juce::XmlElement& xml)
     if (const auto target = rig.parameters.find ("expressionTarget");
         savedWith < 30 && target != rig.parameters.end() && target->second > 1.5f)
         target->second = 0.0f;
+
+    // Saved before 0.16.0 with the LIMITER set: its THRESHOLD and MAKE UP as GAIN and OUTPUT.
+    if (const auto& p = rig.parameters; savedWith < 36 && (p.count ("limitThreshold") > 0 || p.count ("limitMakeUp") > 0))
+    {
+        const auto value = [&p] (const char* id, float otherwise) { const auto found = p.find (id); return found != p.end() ? found->second : otherwise; };
+        const auto converted = convertOldLimiter (value ("limitThreshold", -1.0f), value ("limitMakeUp", 0.0f), value ("limitTrim", 0.0f));
+        rig.parameters["limitGain"] = converted.gain;
+        rig.parameters["limitCeiling"] = converted.ceiling;
+        rig.parameters["limitTrim"] = converted.trim;
+    }
 
     return rig;
 }

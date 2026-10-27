@@ -51,7 +51,7 @@ namespace
 CompDisplay::CompDisplay (ParagonX1AudioProcessor& p) : processor (p)
 {
     setWantsKeyboardFocus (true);
-    setTitle ("COMP bands");
+    setTitle ("CONSTRICTOR bands");
     shown = processor.getMultibandSettings();
     startTimerHz (30);
 }
@@ -324,7 +324,7 @@ void CompDisplay::paint (juce::Graphics& g)
     {
         g.setColour (ParagonColours::textDim);
         g.setFont (juce::FontOptions (13.0f));
-        g.drawFittedText ("Double-click to add a band (up to 6). With no bands, COMP is the full-band compressor on the right, as before.",
+        g.drawFittedText ("Double-click to add a band (up to 6). With no bands, CONSTRICTOR is the full-band compressor on the right, as before.",
                           plot.reduced (40.0f, 0.0f).withTrimmedTop (plot.getHeight() * 0.62f).toNearestInt(), juce::Justification::centredTop, 2);
     }
 }
@@ -561,7 +561,7 @@ CompPage::CompPage (ParagonX1AudioProcessor& p)
       makeUp (p.getParameters(), ParamIDs::compMakeUp, "MAKE UP", "Level back up after compressing"),
       characterAttachment (p.getParameters(), ParamIDs::compCharacter, filled (character, ParamRanges::compCharacters)),
       preset (PresetButton::Hooks {
-          "COMP",
+          "CONSTRICTOR",
           [] () -> const std::vector<StompPreset>& { return CompPresets::factory(); },
           [&p] { return p.getCompPresets().user(); },
           [&p] { return p.getCompPresetName(); },
@@ -601,10 +601,10 @@ CompPage::CompPage (ParagonX1AudioProcessor& p)
     addAndMakeVisible (display);
     display.onSelect = [this] (int selected) { showBand (selected); };
 
-    onButton.setTooltip ("Switch COMP on or off (the same as stomp 2)");
+    onButton.setTooltip ("Switch CONSTRICTOR on or off (the same as stomp 2)");
     lookahead.setTooltip ("The bands hear up to 20 ms ahead (each band's LOOK-AHEAD), so they're ready before a peak. "
-                          "COMP is then 20 ms late, which your DAW makes up for on playback (not when monitoring live)");
-    wide.setTooltip ("The full-band compressor, after the bands (on by default, as COMP was before it had bands)");
+                          "CONSTRICTOR is then 20 ms late, which your DAW makes up for on playback (not when monitoring live)");
+    wide.setTooltip ("The full-band compressor, after the bands (on by default, as CONSTRICTOR was before it had bands)");
     autoRelease.setTooltip ("A release that follows the music: quick after a short peak, slower after long compression");
     link.setTooltip ("Both channels compressed together, from the louder one");
     character.setTooltip ("VCA clean and precise, OPTO smooth, FET fast with a little grit");
@@ -623,7 +623,7 @@ CompPage::CompPage (ParagonX1AudioProcessor& p)
 
     for (auto* button : { &listen, &previous, &next, &remove })
         styleButton (*button);
-    listen.setTooltip ("Hold to hear only this band's part of the sound, as COMP leaves it");
+    listen.setTooltip ("Hold to hear only this band's part of the sound, as CONSTRICTOR leaves it");
     listen.onStateChange = [this] { processor.setMultibandSolo (listen.isDown() && band >= 0 ? band : -1); };
     previous.onClick = [this] { step (-1); };
     next.onClick = [this] { step (1); };
@@ -810,10 +810,10 @@ void CompPage::paint (juce::Graphics& g)
     auto title = topBar.reduced (14, 8).removeFromLeft (190);
     const auto titleFont = juce::FontOptions (19.0f, juce::Font::bold);
     const auto titleArea = title.removeFromTop (title.getHeight() / 2 + 6);
-    const auto titleWidth = (float) juce::GlyphArrangement::getStringWidthInt (titleFont, "COMP");
+    const auto titleWidth = (float) juce::GlyphArrangement::getStringWidthInt (titleFont, "CONSTRICTOR");
     g.setGradientFill (ParagonLookAndFeel::menuHighlight (titleArea.toFloat().withWidth (titleWidth)));
     g.setFont (titleFont);
-    g.drawText ("COMP", titleArea, juce::Justification::bottomLeft, false);
+    g.drawText ("CONSTRICTOR", titleArea, juce::Justification::bottomLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (10.5f));
     g.drawText ("Compressor and bands", title, juce::Justification::topLeft, false);

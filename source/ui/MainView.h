@@ -14,10 +14,12 @@
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/PedalBody.h"
 #include "ui/PerformanceControls.h"
+#include "ui/RackUnit.h"
 #include "ui/RigBrowser.h"
 #include "ui/SignalChain.h"
 #include "ui/OraclePage.h"
 #include "ui/CompPage.h"
+#include "ui/LimiterPage.h"
 
 // A side strip from the mockup: a title, a gain knob with its value
 // underneath, and a level meter.
@@ -57,9 +59,8 @@ private:
 // the whole view to the window size, staying sharp (everything is vectors).
 //
 //   header:  logo | PROCESSOR PRESETS SETTINGS | < rig > | undo redo save settings
-//   middle:  INPUT | the unit, laid out as a DigiTech GSP21's foot controller:
-//            the display along the top, the 7 stomps over RIG 1-5, BANK down, BANK up | OUTPUT
-//   dock:    RIG BROWSER | SELECTED RIG | the EQ's overview (or a block's knobs)
+//   middle:  INPUT | the unit: the display along the top, then four rack
+//            units (ECHELON, DOMINION, CONSTRICTOR, the LIMITER), one to a row | OUTPUT
 //   bottom:  SIGNAL CHAIN
 class MainView final : public juce::Component,
                        private juce::ChangeListener,
@@ -84,7 +85,7 @@ private:
     // tunerBlock isn't in the chain (ORACLE, with the tuner, only listens): stomp 1's name opens its page.
     enum Block { eqBlock, dominionBlock, compBlock, limiterBlock, numBlocks, tunerBlock = numBlocks };
 
-    enum class Page { processor, presets, settings, eq, dominion, oracle, comp };   // eq, dominion, oracle, comp: those stomps' own pages
+    enum class Page { processor, presets, settings, eq, dominion, oracle, comp, limiter };   // eq to limiter: those stomps' own pages
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void applyFinish();   // colours the printed labels and redraws the unit in the current finish
@@ -92,11 +93,6 @@ private:
 
     void selectBlock (int block);
     void refreshPerformance();
-    // The bottom row: which five rigs it shows (pages of five within each
-    // bank, in the order the rig arrows step), and the page with the current rig.
-    std::vector<std::vector<const RigLibrary::Entry*>> rigPages() const;
-    void showRigPage (int index);
-    void followCurrentRig();
     void showPage (Page);
     void refreshRig();
     void saveRig();
@@ -124,34 +120,26 @@ private:
     juce::TextButton pedalSave { "SAVE" }, pedalSaveAs { "SAVE AS..." }, bypassButton;
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
-    // The small keys: UNDO REDO BYPASS
-    juce::TextButton undoPedal, redoPedal;
-    juce::Label undoLabel { {}, "UNDO" }, redoLabel { {}, "REDO" }, bypassLabel { {}, "BYPASS" };
+    // The small keys: UNDO REDO BYPASS ORACLE (ORACLE's opens its page, lit while it listens)
+    juce::TextButton undoPedal, redoPedal, oraclePedal;
+    juce::Label undoLabel { {}, "UNDO" }, redoLabel { {}, "REDO" }, bypassLabel { {}, "BYPASS" }, oracleLabel { {}, "ORACLE" };
 
     juce::Slider rigLevelKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox },
                  presenceKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     juce::AudioProcessorValueTreeState::SliderAttachment rigLevelAttachment, presenceAttachment;
     juce::Label rigLevelLabel { {}, "RIG LEVEL" }, presenceLabel { {}, "PRESENCE" };
-    // The seven stomps along the top row.
-    std::array<std::unique_ptr<Footswitch>, 7> footswitches;
-    // The bottom row: five rigs, then BANK down and BANK up.
-    std::array<std::unique_ptr<Footswitch>, 5> rigSwitches;
-    std::unique_ptr<Footswitch> bankDown, bankUp;
-    int rigPage = 0;
-    juce::File followedRig;   // the current rig the bottom row last followed
-    juce::String followedRigName;
+    // The four rows (0.18.0): a rack unit each, in the chain's order. Each
+    // one's POWER footswitch turns it on or off; its name and EDIT open its page.
+    std::array<std::unique_ptr<RackUnit>, 4> racks;
 
     // The tuner's note for the screen
     TunerReader tunerReader;
     LedDisplay::Contents::Tuner tunerState;
     int ticks = 0;
 
-    // Dock and signal chain
-    RigNavigator rigNavigator;
-    SelectedRigPanel selectedRig;
-    EqOverview eqPanel;   // the dock's default: the EQ's curve, and OPEN EQ
-    EffectPanel limiterPanel;   // stomp 7's
-    juce::TextButton closePanel { "EQ" };   // back to the EQ overview, the dock's default
+    // The signal chain. (The dock above it, with the rig browser, the
+    // selected rig and ECHELON's overview, went in 0.17.0: PRESETS browses
+    // the rigs, SAVE / SAVE AS are on the unit, and each unit opens its page.)
     SignalChain signalChain;
     int selectedBlock = eqBlock;
 
@@ -162,6 +150,7 @@ private:
     DominionPage dominionPage;
     OraclePage oraclePage;
     CompPage compPage;
+    LimiterPage limiterPage;
     std::vector<juce::Component*> processorPage;
     Page page = Page::processor;
 

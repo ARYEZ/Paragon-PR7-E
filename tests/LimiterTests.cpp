@@ -8,6 +8,7 @@
 #include "PluginProcessor.h"
 #include "rigs/FactoryRigs.h"
 #include "ui/EffectPanel.h"
+#include "ui/LimiterPage.h"
 #include "ui/Footswitch.h"
 
 #include <optional>
@@ -32,7 +33,7 @@ namespace
         processor->setPlayConfigDetails (inputs, 2, sampleRate, blockSize);
         processor->prepareToPlay (sampleRate, blockSize);
         set (*processor, ParamIDs::limitOn, 1.0f);
-        set (*processor, ParamIDs::limitThreshold, thresholdDb);
+        set (*processor, ParamIDs::limitCeiling, thresholdDb);   // GAIN 0: the ceiling is PR7-C's threshold
         set (*processor, ParamIDs::limitMode, (float) mode);
         return processor;
     }
@@ -125,10 +126,11 @@ TEST_CASE ("Limiter: no mode lets a peak past the threshold", "[limit]")
     }
 }
 
-TEST_CASE ("Limiter: the ceiling rises with MAKE UP", "[limit]")
+TEST_CASE ("Limiter: the ceiling rises with MAKE UP (from 0.16.0: GAIN into OUTPUT)", "[limit]")
 {
-    auto limiter = makeLimiter (-10.0f);
-    set (*limiter, ParamIDs::limitMakeUp, 6.0f);
+    // PR7-C's THRESHOLD -10 dB and MAKE UP +6 dB: GAIN +6 dB into an OUTPUT of -4 dB.
+    auto limiter = makeLimiter (-4.0f);
+    set (*limiter, ParamIDs::limitGain, 6.0f);
     auto hits = drumHits (96000);
     process (*limiter, hits);
     CHECK_THAT (peakDb (hits), WithinAbs (-4.0, 0.3));
@@ -276,25 +278,28 @@ TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", 
     }
 }
 
-TEST_CASE ("Limiter in PR7-E: stomp 7 switches it, and its name opens its knobs in the dock", "[limit][ui]")
+TEST_CASE ("Limiter in PR7-E: its rack unit (row 4) switches it, and its POWER name opens its own page", "[limit][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     std::vector<Footswitch*> stomps;
-    std::vector<EffectPanel*> panels;
+    LimiterPage* page = nullptr;
     std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
     {
         if (auto* stomp = dynamic_cast<Footswitch*> (&c))
             stomps.push_back (stomp);
-        if (auto* panel = dynamic_cast<EffectPanel*> (&c))
-            panels.push_back (panel);
+        if (auto* p = dynamic_cast<LimiterPage*> (&c))
+            page = p;
         for (auto* child : c.getChildren())
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
-    CHECK_FALSE (stomps[6]->isPlaceholder());
-    CHECK (std::none_of (panels.begin(), panels.end(), [] (EffectPanel* p) { return p->isVisible(); }));
-    stomps[6]->onSelect();
-    CHECK (std::count_if (panels.begin(), panels.end(), [] (EffectPanel* p) { return p->isVisible(); }) == 1);
+    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    REQUIRE (page != nullptr);
+    CHECK_FALSE (stomps[3]->isPlaceholder());
+    CHECK_FALSE (page->isVisible());
+    stomps[3]->onSelect();
+    CHECK (page->isVisible());
+    stomps[3]->toggle();
+    CHECK (processor.getParameters().getRawParameterValue (ParamIDs::limitOn)->load() > 0.5f);
 }

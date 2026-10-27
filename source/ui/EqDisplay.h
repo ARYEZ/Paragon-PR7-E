@@ -27,7 +27,8 @@ public:
     int create (eq::Shape, double frequency, double gainDb, double dynamicRangeDb = 0.0) const;
     void remove (int band) const;
 
-    static juce::Colour colourFor (int band);
+    // A band's colour: the menus' red to pink to orange gradient at its frequency (0.16.1), as DOMINION's and COMP's bands.
+    static juce::Colour colourFor (const eq::Band&);
     static juce::Colour colourFor (eq::Placement);   // the curve of the bands on one channel, or mid or side
 
     ParagonX1AudioProcessor& processor;

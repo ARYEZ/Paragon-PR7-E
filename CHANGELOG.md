@@ -2,6 +2,51 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.18.0
+
+- **The four rows are now four rack units,** after the photo you sent (a Yamaha SPX90, a Lexicon PCM70 and a Roland SDE-3000 in a rack), drawn in the PR7's own parts: its footswitches, keys, knobs, LED bars and orange screen, in whichever finish you've chosen. In the signal chain's order: **row 1 ECHELON, row 2 DOMINION, row 3 CONSTRICTOR, row 4 the LIMITER.** Each unit, left to right:
+  - **POWER:** the unit's footswitch, switching it on or off, as the stomps did. Clicking the word POWER, the unit's name or **EDIT** opens its big page.
+  - **A ladder of LED bars** that lights as it works: ECHELON's shows how far its dynamic bands are moving, DOMINION's how deep it's cutting, CONSTRICTOR's its gain reduction, the LIMITER's the output level. They hold a peak and fall back like a meter's lights.
+  - **The screen:** ECHELON draws its curve with each band as a dot in the gradient, and its band count; DOMINION draws what it's cutting across the spectrum, with its DEPTH; CONSTRICTOR shows its gain reduction in big digits, with threshold, ratio, character and bands; the LIMITER shows the true peak (held two seconds) and the integrated loudness, with its style, look-ahead and oversampling, and a bar for how much it's turning down.
+  - **Three keys,** each with its light: ECHELON AUTO GAIN, ANALYSER, MATCH (opens EQ Match); DOMINION HARD (off is SOFT), M/S, DELTA; CONSTRICTOR VCA, OPTO, FET (its character); the LIMITER TRUE PEAK, UNITY, DELTA.
+  - **Two knobs:** ECHELON OUTPUT and GAIN SCALE; DOMINION DEPTH and DETAIL; CONSTRICTOR THRESHOLD and RATIO; the LIMITER GAIN and OUTPUT.
+  - **A small screen under EDIT:** ECHELON's auto gain, DOMINION's and CONSTRICTOR's preset (with a `*` once its settings have changed, as on their pages), the LIMITER's style.
+- **ORACLE is now a small key beside BYPASS** (it was stomp 1): it opens ORACLE's page, where you switch it on, and its light shows when it's listening.
+- **The rig pads and BANK are gone,** as agreed: change rigs with the arrows beside the screen, the header's **<** **>**, or the **PRESETS** tab.
+- INSERTS and AUTO EQ aren't on the unit for now. They'll get their place when they're built.
+- Nothing about the sound has changed, and projects and rigs load as before.
+
+## 0.17.0
+
+- **A four-row unit,** as you asked: the unit now reaches down to the signal chain, with the seven stomps on top and **three rows of rigs** under them, nineteen at a time, then **BANK ▼** and **BANK ▲** at the end of row 4. The signal chain stays as it was.
+  - **BANK** now steps a whole bank at a time (a bank with more than nineteen rigs, like C with its guitar and bass genre rigs, goes on over a second page). So all of bank A's factory rigs, its own and the genre vocals, are on screen at once: A01 to A07 on row 2, the genre vocals from A11 on rows 3 and 4. Empty pads show no number.
+  - **The three panels under the unit are gone** (the rig browser, the selected rig and ECHELON's overview), to make room. Nothing is lost: the **PRESETS** tab has the full rig browser, **SAVE** and **SAVE AS** are on the unit under the display, and each stomp's name opens its own page. ECHELON in the signal chain now opens ECHELON's page too, as the other blocks do.
+  - The rows are a little shorter than before (the pads keep their look) so all four fit, and the INPUT and OUTPUT strips run the unit's full height.
+
+## 0.16.1
+
+- **The LIMITER pumps much less.** You were right: it pumped in every style. Two parts of my design caused it, and both are fixed:
+  - Its slower stage followed every peak, so each kick turned the whole mix down for its RELEASE time (250 ms). It now follows the average level (over 100 ms), so a single hit hardly moves it, and each style gives it less of the work.
+  - Its fast stage slowed its recovery after "long" limiting, but counted a run of kicks, or a mix limited all the time, as long limiting, so each kick's extra dip lingered. It now keeps track of how much the music usually needs turning down and comes straight back to that after a hit, slowing down only around it (where slow recovery means less distortion).
+  - Measured on kicks over a loud mix that's limited all the time (GAIN +8 dB), 80 to 120 ms after a kick: MODERN's extra dip below the mix's own level went from 2.1 dB to 0.4 dB, CLEAR's from 3.3 to 0.4, SAFE's from 3.2 to 0.5. A new test keeps it that way. During the kick itself the mix still dips: when a kick hits the ceiling, a limiter that keeps the stereo image turns everything down with it (AGGRESSIVE dips least, as its clipper takes the kick's top). PUNCHY and GLUE still pump a little, on purpose.
+  - TRUE PEAK's last stage now sits 0.12 dB under the ceiling (was 0.1), to stay within 0.2 dB in its hardest case.
+- **New names:** the EQ is now **ECHELON** and the compressor **CONSTRICTOR**, on the stomps, the signal chain, their pages, and the parameter names your DAW shows. Projects, rigs, automation and presets are unaffected: only the names you see changed.
+- **ECHELON's page in the gradient,** as DOMINION's, CONSTRICTOR's and the LIMITER's: its name in the red to pink to orange gradient, each band coloured by where it sits on that gradient (red in the lows, pink in the middle, orange in the highs), the whole curve in white, and the left, right, mid and side curves in the same family.
+
+## 0.16.0
+
+- **The LIMITER (stomp 7), inspired by FabFilter Pro-L 2**, as you asked. Our own design from its manual: FabFilter doesn't publish how Pro-L 2 limits, so this follows what the manual says each control does. Click LIMITER's name (or LIMITER in the signal chain) for its new page.
+  - **GAIN into a ceiling:** the tall GAIN slider drives the sound into the **OUTPUT** ceiling, which nothing passes.
+  - **Look-ahead:** the old limiter reacted to each peak only as it arrived, so when pushed it squared off the front of the peaks. The new one sees each peak coming (**LOOKAHEAD**, 0 to 5 ms; 1 ms by default) and glides the level down so it's exactly right when the peak arrives. In the tests, 5 ms of look-ahead halves the distortion on a bass note limited 5 dB. A slower stage follows the average level (**ATTACK**, **RELEASE**), and **LINK PEAKS** and **LINK RELEASE** set how much the left and right share each stage, as on Pro-L 2.
+  - **Eight styles** with plain names: **CLEAR** (stays out of the way), **PUNCHY** (a little pumping, for punch), **DYNAMIC** (lifts the hits before limiting, so they keep their attack), **ALL-ROUND**, **AGGRESSIVE** (soft-clips the top first: loud and edgy), **MODERN** (the default: lets go quickly after a lone peak), **GLUE** (starts working 6 dB under the ceiling, like a bus compressor) and **SAFE** (never distorts). Our own versions of what each of Pro-L 2's styles is described as doing; the tests check that they differ the way their names say. BRICK, SOFT and AUTO, the earlier limiter, are still there for your older projects.
+  - **TRUE PEAK:** keeps the peaks a converter or a streaming encoder rebuilds between the samples under the ceiling too, so -1 dBTP for Spotify really is -1. In the tests it holds within 0.1 dB (0.2 dB in the hardest case: AGGRESSIVE with no look-ahead or oversampling, where oversampling helps).
+  - **OVERSAMPLING** 2x, 4x or 8x (less distortion, at more CPU), **UNITY** (hear it at the level it came in, so louder doesn't fool you), **DELTA** (hear only what it takes away), **DC FILTER**, **TRIM**, and **DITHER** (24 to 16 bits, with three kinds of NOISE SHAPING) for a final CD-style master.
+  - **Meters:** the page scrolls the last few seconds (the level going in, in grey; what comes out, in the gradient; the gain reduction in red from the top, its biggest dips labelled; the loudness as a thin line; the ceiling dashed). Beside it, the true peak and gain reduction held since RESET (click them to reset too), and **loudness** to EBU R128: momentary, short term, integrated and range, against a **TARGET** (-14 LUFS for streaming, -9, -16, -23 or -24). In the tests the loudness meter reads EBU's own test signals to within 0.1 LU.
+  - **Delay:** look-ahead, true peak and oversampling make the sound a little late (1 ms by default, about 3.3 ms with TRUE PEAK; shown on the page). Your DAW makes up for it on playback, but not when you monitor live through it; set LOOKAHEAD to 0 with TRUE PEAK and OVERSAMPLING off for no delay at all.
+  - **Your projects and rigs sound the same:** the old THRESHOLD and MAKE UP become GAIN and OUTPUT, which gives exactly the same result. The mastering factory rigs (including the genre masters) now use MODERN with TRUE PEAK at -1 dBTP.
+  - **CPU:** at its heaviest (TRUE PEAK, 8x, 5 ms look-ahead) it uses about 8% of one core here.
+  - Not checked here: how it sounds on your music (I can't listen). Not built: presets, a side chain input, surround, and Pro-L 2's other display modes and K-meter scales.
+
 ## 0.15.0
 
 - **Genre rigs and presets for nine heavy styles:** modern metal, metalcore, djent, nu metal, argent metal, hard rock, grunge, symphonic metal and industrial. Our own reading of how each style is usually mixed, not any producer's settings (none are published as mixing presets), and not tuned by ear: starting points to adjust on your tracks.

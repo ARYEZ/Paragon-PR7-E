@@ -49,10 +49,10 @@ EqPage::EqPage (ParagonX1AudioProcessor& p)
     addAndMakeVisible (display);
     display.onSelect = [this] (int selected) { showBand (selected); };
 
-    onButton.setTooltip ("Switch the EQ on or off (the same as stomp 4)");
+    onButton.setTooltip ("Switch ECHELON on or off (the same as stomp 4)");
     autoGain.setTooltip ("Turn the output down (or up) by about as much as the bands make it louder (or quieter), "
                          "an estimate from the curve, so you can compare by ear without being fooled by level");
-    output.setTooltip ("The EQ's output level");
+    output.setTooltip ("ECHELON's output level");
     gainScale.setTooltip ("Scales every band's gain: 0% flat, 100% as set, 200% twice as much");
     output.setDoubleClickReturnValue (true, 0.0);
     gainScale.setDoubleClickReturnValue (true, 1.0);
@@ -60,8 +60,8 @@ EqPage::EqPage (ParagonX1AudioProcessor& p)
     styleKnob (gainScale, 52);
     showInput.setToggleState (true, juce::dontSendNotification);
     showOutput.setToggleState (true, juce::dontSendNotification);
-    showInput.setTooltip ("Show the spectrum going into the EQ (shaded)");
-    showOutput.setTooltip ("Show the spectrum coming out of the EQ (a line)");
+    showInput.setTooltip ("Show the spectrum going into ECHELON (shaded)");
+    showOutput.setTooltip ("Show the spectrum coming out of ECHELON (a line)");
     showInput.onClick = [this] { display.showInput = showInput.getToggleState(); };
     showOutput.onClick = [this] { display.showOutput = showOutput.getToggleState(); };
     const auto plusMinus = juce::String::fromUTF8 ("\xc2\xb1");
@@ -74,7 +74,7 @@ EqPage::EqPage (ParagonX1AudioProcessor& p)
     match.setClickingTogglesState (false);
     match.setColour (juce::TextButton::buttonOnColourId, ParagonColours::accentDim.withAlpha (0.8f));
     match.setColour (juce::TextButton::textColourOnId, ParagonColours::accent);
-    match.setTooltip ("EQ Match: listen to your track and a reference (another part of the song, a song file, or a saved one), "
+    match.setTooltip ("MATCH: listen to your track and a reference (another part of the song, a song file, or a saved one), "
                       "then add bands that make your track's tone like the reference's");
     match.onClick = [this] { showMatch (! matching); };
     matchPanel.onClose = [this] { showMatch (false); };
@@ -138,6 +138,13 @@ EqPage::EqPage (ParagonX1AudioProcessor& p)
 
     showBand (-1);
     startTimerHz (30);
+}
+
+void EqPage::setAnalyser (bool on)
+{
+    showInput.setToggleState (on, juce::dontSendNotification);
+    showOutput.setToggleState (on, juce::dontSendNotification);
+    display.showInput = display.showOutput = on;
 }
 
 void EqPage::showMatch (bool shouldShow)
@@ -268,7 +275,7 @@ void EqPage::resized()
     dynamicArea = rows;
 
     auto bar = topBar.reduced (12, 6);
-    bar.removeFromLeft (52);   // "EQ"
+    bar.removeFromLeft (titleWidth);   // the name, drawn
     onButton.setBounds (bar.removeFromLeft (56));
     bar.removeFromLeft (14);
     outputLabel.setBounds (bar.removeFromLeft (52));
@@ -335,11 +342,13 @@ void EqPage::paint (juce::Graphics& g)
     DockStyle::drawPanel (g, topBar.toFloat());
     DockStyle::drawPanel (g, controlsArea.toFloat());
 
-    auto title = topBar.reduced (12, 6);
-    Icons::draw (g, Icons::Type::eq, title.removeFromLeft (24).toFloat().withSizeKeepingCentre (22.0f, 20.0f), ParagonColours::eq, 1.6f, true);
-    g.setColour (ParagonColours::text);
-    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    g.drawText ("EQ", title.removeFromLeft (28), juce::Justification::centredRight, false);
+    // The name in the red to pink to orange gradient, as on DOMINION's, COMP's and the LIMITER's pages.
+    auto title = topBar.reduced (12, 6).removeFromLeft (titleWidth);
+    const auto titleFont = juce::FontOptions (17.0f, juce::Font::bold);
+    const auto nameWidth = (float) juce::GlyphArrangement::getStringWidthInt (titleFont, "ECHELON");
+    g.setGradientFill (ParagonLookAndFeel::menuHighlight (title.toFloat().withWidth (nameWidth)));
+    g.setFont (titleFont);
+    g.drawText ("ECHELON", title, juce::Justification::centredLeft, false);
 
     // AUTO GAIN's current correction, beside its switch.
     if (autoGain.getToggleState())
@@ -363,7 +372,7 @@ void EqPage::paint (juce::Graphics& g)
                     controlsArea, juce::Justification::centred, false);
         return;
     }
-    const auto colour = EqBands::colourFor (band);
+    const auto colour = EqBands::colourFor (processor.getEqSettings().bands[(size_t) band]);
     name = name.withHeight (92);
     g.setColour (colour);
     g.fillEllipse (name.removeFromLeft (22).toFloat().withSizeKeepingCentre (14.0f, 14.0f));
@@ -391,7 +400,7 @@ void EqPage::paintDynamics (juce::Graphics& g)
     const auto settings = processor.getEqSettings();
     const auto& b = settings.bands[(size_t) band];
     const auto reading = processor.getEqDynamics (band);
-    const auto colour = EqBands::colourFor (band);
+    const auto colour = EqBands::colourFor (b);
     auto area = meterArea;
     const auto rowHeight = area.getHeight() / 2;
 
@@ -436,7 +445,7 @@ EqOverview::EqOverview (ParagonX1AudioProcessor& p) : processor (p)
 {
     open.setColour (juce::TextButton::buttonColourId, ParagonColours::accentDim.withAlpha (0.6f));
     open.setColour (juce::TextButton::textColourOffId, ParagonColours::accent);
-    open.setTooltip ("Open the EQ's page: its display, bands and spectrum");
+    open.setTooltip ("Open ECHELON's page: its display, bands and spectrum");
     open.onClick = [this] { if (onOpen) onOpen(); };
     addAndMakeVisible (open);
     startTimerHz (15);
@@ -469,11 +478,11 @@ void EqOverview::paint (juce::Graphics& g)
     const auto numBands = std::count_if (settings.bands.begin(), settings.bands.end(), [] (const eq::Band& b) { return b.used; });
 
     auto header = getLocalBounds().reduced (16, 10).removeFromTop (26).toFloat();
-    Icons::draw (g, Icons::Type::eq, header.removeFromLeft (26.0f).withSizeKeepingCentre (22.0f, 20.0f), ParagonColours::eq, 1.6f, true);
-    header.removeFromLeft (8.0f);
-    g.setColour (ParagonColours::text);
-    g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-    g.drawText ("EQ", header.removeFromLeft (30.0f), juce::Justification::centredLeft, false);
+    const auto nameFont = juce::FontOptions (14.0f, juce::Font::bold);
+    const auto nameArea = header.removeFromLeft ((float) juce::GlyphArrangement::getStringWidthInt (nameFont, "ECHELON") + 10.0f);
+    g.setGradientFill (ParagonLookAndFeel::menuHighlight (nameArea.withTrimmedRight (10.0f)));
+    g.setFont (nameFont);
+    g.drawText ("ECHELON", nameArea, juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (12.0f));
     g.drawText ((numBands == 0 ? juce::String ("No bands yet") : juce::String (numBands) + (numBands == 1 ? " band" : " bands"))
@@ -505,12 +514,12 @@ void EqOverview::paint (juce::Graphics& g)
         else
             curve.lineTo (x, yFor (db));
     }
-    g.setColour (ParagonColours::accent.withAlpha (settings.on ? 1.0f : 0.4f));
+    g.setColour (juce::Colours::white.withAlpha (settings.on ? 1.0f : 0.4f));
     g.strokePath (curve, juce::PathStrokeType (2.0f));
     for (int band = 0; band < (int) settings.bands.size(); ++band)
         if (const auto& b = settings.bands[(size_t) band]; b.used)
         {
-            g.setColour (b.on ? EqBands::colourFor (band) : ParagonColours::textDim);
+            g.setColour (b.on ? EqBands::colourFor (b) : ParagonColours::textDim);
             g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ xFor (b.frequency), yFor (eq::usesGain (b.shape) ? b.gainDb : 0.0) }));
         }
 }

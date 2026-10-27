@@ -39,8 +39,8 @@ EqMatchPanel::EqMatchPanel (ParagonX1AudioProcessor& p, EqDisplay& d)
     referenceRecord.setTooltip ("Use another part of this track as the reference: move to it in your song and play it");
     loadFile.setTooltip ("Use a song as the reference: pick an audio file (WAV, AIFF, FLAC, Ogg, MP3)");
     saved.setTooltip ("A reference saved before, or save your track or this reference for another time");
-    add.setTooltip ("Add the proposed bands to the EQ, as ordinary bands you can change (undo takes them all back)");
-    close.setTooltip ("Close EQ Match without adding anything (what's been heard is kept)");
+    add.setTooltip ("Add the proposed bands to ECHELON, as ordinary bands you can change (undo takes them all back)");
+    close.setTooltip ("Close MATCH without adding anything (what's been heard is kept)");
 
     trackRecord.onClick = [this]
     {
@@ -311,7 +311,7 @@ void EqMatchPanel::paint (juce::Graphics& g)
     auto title = titleArea;
     g.setColour (ParagonColours::text);
     g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    g.drawText ("EQ MATCH", title.removeFromTop (24), juce::Justification::centredLeft, false);
+    g.drawText ("MATCH", title.removeFromTop (24), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (11.5f));
     g.drawFittedText ("Make your track's tone like a reference: listen to both, then add the bands it proposes.",

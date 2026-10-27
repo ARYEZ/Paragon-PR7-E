@@ -331,7 +331,7 @@ TEST_CASE ("Compressor in PR7-E: off by default, leaving the sound alone; a mono
         REQUIRE_THAT (buffer.getSample (1, i), WithinAbs (buffer.getSample (0, i), 1.0e-7));
 }
 
-TEST_CASE ("Compressor in PR7-E: stomp 2 switches it, and its name opens its knobs in the dock", "[comp][ui]")
+TEST_CASE ("Compressor in PR7-E: its rack unit (row 3) switches it, and opens its page", "[comp][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -347,9 +347,9 @@ TEST_CASE ("Compressor in PR7-E: stomp 2 switches it, and its name opens its kno
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() >= 7);   // the stomps first, then the rig row
-    CHECK_FALSE (stomps[1]->isPlaceholder());
-    stomps[1]->toggle();
+    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    CHECK_FALSE (stomps[2]->isPlaceholder());
+    stomps[2]->toggle();
     CHECK (processor.getParameters().getRawParameterValue (ParamIDs::compOn)->load() > 0.5f);
     // Its name opens its own page (0.13.0: with its bands).
     std::vector<CompPage*> pages;
@@ -363,7 +363,7 @@ TEST_CASE ("Compressor in PR7-E: stomp 2 switches it, and its name opens its kno
     findPages (*editor);
     REQUIRE (pages.size() == 1);
     CHECK_FALSE (pages[0]->isVisible());
-    stomps[1]->onSelect();
+    stomps[2]->onSelect();
     CHECK (pages[0]->isVisible());
 }
 
