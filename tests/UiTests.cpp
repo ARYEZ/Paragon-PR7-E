@@ -315,7 +315,7 @@ TEST_CASE ("BYPASS passes the clean guitar, on both channels", "[ui][bypass]")
 
 TEST_CASE ("No latency: BYPASS and the processed sound line up with the input", "[ui][bypass]")
 {
-    // Nothing in PR7-E's chain looks ahead (the NAM amp, which did, went with
+    // Nothing in PR7-X's chain looks ahead (the NAM amp, which did, went with
     // PR7-B's bass blocks), so the DAW needn't compensate and bypassing
     // can't shift the sound in time.
     ParagonX1AudioProcessor processor;

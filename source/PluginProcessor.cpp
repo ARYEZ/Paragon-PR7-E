@@ -328,7 +328,7 @@ void ParagonX1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
 void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start, int numSamples)
 {
-    // Stereo throughout: PR7-E works on recordings and mixes, so both
+    // Stereo throughout: PR7-X works on recordings and mixes, so both
     // channels go through untouched apart from what the stomps do to them.
     // A mono track is heard on both speakers.
     const auto numOutputChannels = juce::jmin (getTotalNumOutputChannels(), buffer.getNumChannels(), effects::maxChannels);
@@ -406,7 +406,7 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, in
     // First its bands (0.13.0; with LOOK-AHEAD on, everything from here is
     // 20 ms late, which the DAW makes up for), then the full-band compressor
     // (PR7-C's). That takes whole buffers, so it gets this piece's channels
-    // as one, and the same audio to listen to (PR7-E has no sidechain filters).
+    // as one, and the same audio to listen to (PR7-X has no sidechain filters).
     multiband.process (block, getMultibandSettings(), isOn (ParamIDs::compOn));
     {
         float* channels[effects::maxChannels] {};
@@ -491,7 +491,7 @@ void ParagonX1AudioProcessor::updateOracle()
 
 juce::File ParagonX1AudioProcessor::getOracleMidiFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-E ORACLE");
+    return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-X ORACLE");
 }
 
 //==============================================================================

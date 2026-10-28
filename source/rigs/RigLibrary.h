@@ -19,10 +19,15 @@ public:
         bool isFactory = false;
     };
 
-    // `folder` defaults to the user's Paragon PR7-E rigs folder; tests pass a temporary one.
+    // `folder` defaults to the user's Paragon PR7-X rigs folder; tests pass a temporary one.
     explicit RigLibrary (juce::File folder = defaultFolder());
 
     static juce::File defaultFolder();
+
+    // PR7-E became PR7-X in 0.20.0: the first time, its folder (rigs, stomp
+    // presets, match references, favourites) is copied from the old one, if
+    // there is one; PR7-E's stays as it was. Returns whether it copied.
+    static bool carryOver (const juce::File& oldBase, const juce::File& newBase);
 
     const juce::File& getFolder() const noexcept { return folder; }
 

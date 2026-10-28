@@ -111,7 +111,7 @@ namespace
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     // Version hints are the plugin version (in PR7-G's numbering, which
-    // PR7-B and PR7-E carried on) that introduced each parameter.
+    // PR7-B and PR7-X carried on) that introduced each parameter.
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     layout.add (makeGainParameter (ParamIDs::inputGain, "Input"));
     layout.add (makeGainParameter (ParamIDs::outputGain, "Output"));

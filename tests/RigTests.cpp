@@ -105,7 +105,7 @@ TEST_CASE ("Every factory rig is valid", "[rigs]")
     CHECK (slots.size() == (int) makeFactoryRigs().size());   // no two in the same slot
 }
 
-TEST_CASE ("PR7-E's factory rigs: Init at A01, then vocals, drums, instruments, mix and mastering; PR7-B's are gone", "[rigs]")
+TEST_CASE ("PR7-X's factory rigs: Init at A01, then vocals, drums, instruments, mix and mastering; PR7-B's are gone", "[rigs]")
 {
     const auto rigs = makeFactoryRigs();
     REQUIRE (rigs.size() > 25);
@@ -548,11 +548,11 @@ TEST_CASE ("Each rig's RIG LEVEL adds to the master output", "[rigs]")
     CHECK_THAT (buffer.getMagnitude (0, 0, 256), WithinAbs (0.1 * 1.9953, 0.005));
 }
 
-TEST_CASE ("Rigs live in their own Paragon PR7-E folder, apart from its siblings'", "[rigs]")
+TEST_CASE ("Rigs live in their own Paragon PR7-X folder, apart from its siblings'", "[rigs]")
 {
     const auto folder = RigLibrary::defaultFolder();
     CHECK (folder.getFileName() == "Rigs");
-    CHECK (folder.getParentDirectory().getFileName() == "Paragon PR7-E");
+    CHECK (folder.getParentDirectory().getFileName() == "Paragon PR7-X");
     CHECK (folder.getParentDirectory().getParentDirectory().getFileName() == "Paragon");
 
     // PR7-B's (bass) and PR7-G's (guitar) rigs folders sit next to it, and are different folders.
@@ -562,6 +562,28 @@ TEST_CASE ("Rigs live in their own Paragon PR7-E folder, apart from its siblings
         CHECK (folder != siblingFolder);
         CHECK_FALSE (folder.isAChildOf (siblingFolder.getParentDirectory()));
     }
+}
+
+TEST_CASE ("PR7-E became PR7-X (0.20.0): its folder of rigs and presets is copied over the first time, once", "[rigs]")
+{
+    TempRigFolder temp;
+    const auto oldBase = temp.folder.getChildFile ("Paragon PR7-E"), newBase = temp.folder.getChildFile ("Paragon PR7-X");
+    REQUIRE (oldBase.getChildFile ("Rigs").createDirectory());
+    REQUIRE (oldBase.getChildFile ("Rigs").getChildFile ("My Rig.pr7rig").replaceWithText ("<Rig/>"));
+    REQUIRE (oldBase.getChildFile ("Comp Presets").createDirectory());
+    REQUIRE (oldBase.getChildFile ("Comp Presets").getChildFile ("Mine.pr7comp").replaceWithText ("<CompPreset/>"));
+
+    CHECK (RigLibrary::carryOver (oldBase, newBase));
+    CHECK (newBase.getChildFile ("Rigs").getChildFile ("My Rig.pr7rig").existsAsFile());
+    CHECK (newBase.getChildFile ("Comp Presets").getChildFile ("Mine.pr7comp").existsAsFile());
+    CHECK (oldBase.getChildFile ("Rigs").getChildFile ("My Rig.pr7rig").existsAsFile());   // PR7-E's left as it was
+
+    // Only once: after that, PR7-X's own folder is never overwritten.
+    REQUIRE (newBase.getChildFile ("Rigs").getChildFile ("My Rig.pr7rig").replaceWithText ("<Rig name=\"changed\"/>"));
+    CHECK_FALSE (RigLibrary::carryOver (oldBase, newBase));
+    CHECK (newBase.getChildFile ("Rigs").getChildFile ("My Rig.pr7rig").loadFileAsString().contains ("changed"));
+    // Nothing to copy from: nothing happens.
+    CHECK_FALSE (RigLibrary::carryOver (temp.folder.getChildFile ("Paragon PR7-Q"), temp.folder.getChildFile ("Paragon PR7-Z")));
 }
 
 TEST_CASE ("Only .pr7rig files are rigs: the old Paragon X1 .x1rig files aren't read", "[rigs]")

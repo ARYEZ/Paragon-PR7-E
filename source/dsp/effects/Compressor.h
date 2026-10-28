@@ -9,7 +9,7 @@
 namespace effects
 {
     // Ported from Paragon PR7-C 0.4.1 (source/dsp/Compressor.*), unchanged.
-    // PR7-E's COMP stomp: see Parameters.h. PR7-E has no sidechain filters,
+    // PR7-X's COMP stomp: see Parameters.h. PR7-X has no sidechain filters,
     // so its detector hears the audio itself (PR7-C with its filters off).
     //
     // The channel compressor, in stereo. It listens to a separate sidechain

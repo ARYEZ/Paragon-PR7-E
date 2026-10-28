@@ -102,7 +102,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 1;
         s.name = "ECHELON";
         s.kind = "PARAMETRIC EQUALIZER";
-        s.series = "PR7-E SERIES  24 BANDS";
+        s.series = "PR7-X SERIES  24 BANDS";
         s.onParameterIds = { eqOn };
         s.powerTooltip = "ECHELON on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "AUTO GAIN", "Keeps the level the same as you EQ, so louder doesn't fool you",
@@ -192,7 +192,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 2;
         s.name = "DOMINION";
         s.kind = "RESONANCE SUPPRESSOR";
-        s.series = "PR7-E SERIES  SOFT / HARD";
+        s.series = "PR7-X SERIES  SOFT / HARD";
         s.onParameterIds = { domOn };
         s.powerTooltip = "DOMINION on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "HARD", "HARD: turns down what's loud, at any frequency; off (SOFT): what sticks out of the sound around it",
@@ -250,7 +250,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 3;
         s.name = "CONSTRICTOR";
         s.kind = "COMPRESSOR  6 BANDS";
-        s.series = "PR7-E SERIES  VCA OPTO FET";
+        s.series = "PR7-X SERIES  VCA OPTO FET";
         s.onParameterIds = { compOn };
         s.powerTooltip = "CONSTRICTOR on or off. Click POWER (the word) or EDIT for its page";
         const auto character = [&p] (int which) { return [&p, which] { return juce::roundToInt (valueOf (p, compCharacter)) == which; }; };
@@ -303,7 +303,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 4;
         s.name = "GUILLOTINE";
         s.kind = "TRUE PEAK LIMITER";
-        s.series = "PR7-E SERIES  LOUDNESS";
+        s.series = "PR7-X SERIES  LOUDNESS";
         s.onParameterIds = { limitOn };
         s.powerTooltip = "GUILLOTINE (the limiter) on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "TRUE PEAK", "Keeps the peaks between the samples under the ceiling too",

@@ -1,4 +1,6 @@
-# Paragon PR7-E
+# Paragon PR7-X
+
+*(Called PR7-E until 0.20.0: the same plugin, renamed. Your projects, rigs and presets carry over.)*
 
 [![Build](https://github.com/ARYEZ/Paragon-PR7-E/actions/workflows/build.yml/badge.svg)](https://github.com/ARYEZ/Paragon-PR7-E/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/ARYEZ/Paragon-PR7-E)](https://github.com/ARYEZ/Paragon-PR7-E/releases/latest)
@@ -6,7 +8,7 @@
 The utility processor of the Paragon PR7 family: a VST3 plugin drawn as a floor unit, laid out like a DigiTech GSP21's foot controller.
 Built with [JUCE](https://juce.com).
 
-Paragon PR7-E starts from [Paragon PR7-B](https://github.com/ARYEZ/Paragon-PR7-B) 0.11.0, the bass processor. Its
+Paragon PR7-X (PR7-E until 0.20.0) starts from [Paragon PR7-B](https://github.com/ARYEZ/Paragon-PR7-B) 0.11.0, the bass processor. Its
 siblings are [PR7-G](https://github.com/ARYEZ/Paragon-PR7-G) (guitar), PR7-B (bass),
 [PR7-V](https://github.com/ARYEZ/Paragon-PR7-V) (vocal) and [PR7-C](https://github.com/ARYEZ/Paragon-PR7-C). It installs
 alongside all of them and keeps its own rigs and settings.
@@ -17,14 +19,14 @@ alongside all of them and keeps its own rigs and settings.
 
 ## Status
 
-PR7-E is at the start of its own life: it has its own name and identity, and its face of four rack units, but some of
+PR7-X is at the start of its own life: it has its own name and identity, and its face of four rack units, but some of
 the stomps are still being planned, one at a time with the owner.
 
 | Stomp | Plan | Now |
 |---|---|---|
 | **1 Oracle** | Melody to MIDI (inspired by Melodyne and VariAudio, our own design), with the tuner | Works: transcribes as the DAW plays, note editing, drag the MIDI onto a track |
 | **2 Comp** | PR7-C's compressor, plus up to six bands inspired by FabFilter Pro-MB (our own design) | Works: full band, and bands that compress or expand, down or up, with look-ahead, on its own page |
-| **3 Inserts** | Host other plugins in slots inside PR7-E and open their editors (a mini rack) | Placeholder |
+| **3 Inserts** | Host other plugins in slots inside PR7-X and open their editors (a mini rack) | Placeholder |
 | **4 EQ** | An EQ inspired by FabFilter Pro-Q 4 (our own design) | Works: 24 bands on its own page, any of them dynamic, and EQ Match |
 | **5 Dominion** | Resonance suppression inspired by oeksound soothe 3 (our own design) | Works: Soft and Hard, the depth curve, stereo/mid-side, tilts, delta and band listen, on its own page |
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
@@ -135,7 +137,7 @@ products' names or branding go on the plugin.
 Get the latest version from the **[Releases](https://github.com/ARYEZ/Paragon-PR7-E/releases/latest)** page: download
 the zip for your computer. (Builds of every push also appear under **Actions** → a run → **Artifacts**.)
 
-Unzip it and copy `Paragon PR7-E.vst3` to your VST3 folder:
+Unzip it and copy `Paragon PR7-X.vst3` to your VST3 folder:
 
 | OS | VST3 folder |
 |---|---|
@@ -144,7 +146,7 @@ Unzip it and copy `Paragon PR7-E.vst3` to your VST3 folder:
 | Linux | `~/.vst3` |
 
 **macOS:** the build isn't code-signed yet, so macOS will block it. After copying, run
-`xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/"Paragon PR7-E.vst3"` once.
+`xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/"Paragon PR7-X.vst3"` once.
 
 ## Making a release
 
@@ -178,12 +180,12 @@ PARAGON_SNAPSHOT=editor.png ./build/tests/ParagonX1Tests "[snapshot]"
 
 ## License
 
-Paragon PR7-E is free software under the [GNU Affero General Public License v3](LICENSE.md),
+Paragon PR7-X is free software under the [GNU Affero General Public License v3](LICENSE.md),
 which is required by JUCE's open-source licence.
 
 It uses:
 - [JUCE](https://github.com/juce-framework/JUCE): AGPLv3
 - The Inter typeface (in `resources/fonts`) by Rasmus Andersson, under the SIL Open Font License
 
-FabFilter Pro-Q and Pro-MB, oeksound soothe and Soundtheory Gullfoss are their makers' products. PR7-E's stomps are only inspired
+FabFilter Pro-Q and Pro-MB, oeksound soothe and Soundtheory Gullfoss are their makers' products. PR7-X's stomps are only inspired
 by how they're described and behave; it isn't affiliated with or endorsed by any of them.

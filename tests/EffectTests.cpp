@@ -147,7 +147,7 @@ TEST_CASE ("With every effect off, both channels are the clean input", "[effects
 TEST_CASE ("Stereo stays stereo: left and right keep their own sound, on and bypassed", "[effects][stereo]")
 {
     // A stereo recording: a low note on the left, a high one on the right.
-    // Before 0.3.0 PR7-E played the left channel on both sides.
+    // Before 0.3.0 PR7-X played the left channel on both sides.
     const auto left = sine (110.0, 0.3f, 0.5), right = sine (1760.0, 0.2f, 0.5);
     const auto play = [&] (EffectRig& rig)
     {

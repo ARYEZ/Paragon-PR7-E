@@ -387,7 +387,7 @@ TEST_CASE ("DOMINION: no clicks switching on; it runs in real time comfortably",
 
 //==============================================================================
 // In the plugin
-TEST_CASE ("DOMINION in PR7-E: its rack unit (row 2) switches it, and through the plugin a resonance is cut", "[dominion][plugin]")
+TEST_CASE ("DOMINION in PR7-X: its rack unit (row 2) switches it, and through the plugin a resonance is cut", "[dominion][plugin]")
 {
     ParagonX1AudioProcessor processor;
     processor.setPlayConfigDetails (2, 2, sampleRate, 256);

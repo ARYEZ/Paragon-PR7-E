@@ -48,7 +48,7 @@ void SignalChain::resized()
 
     // Blocks spread evenly with gaps for the dotted connectors, from the
     // left, never wider than nine across would make them: a short chain
-    // (PR7-E's grows as its stomps are built) stays in proportion.
+    // (PR7-X's grows as its stomps are built) stays in proportion.
     const auto count = (float) blocks.size();
     const auto gap = 16.0f;
     const auto widthFor = [&] (float n) { return (area.getWidth() - gap * (n + 1.0f)) / n; };

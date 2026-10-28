@@ -24,17 +24,26 @@ RigLibrary::RigLibrary (juce::File folderToUse) : folder (std::move (folderToUse
 
 juce::File RigLibrary::defaultFolder()
 {
-    // Windows: %APPDATA%\Paragon\Paragon PR7-E\Rigs
-    // macOS:   ~/Library/Application Support/Paragon/Paragon PR7-E/Rigs (via userApplicationDataDirectory)
-    // Linux:   ~/.config/Paragon/Paragon PR7-E/Rigs
-    // Its own folder, apart from its siblings': PR7-B's bass rigs don't carry over.
-    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-          #if JUCE_MAC
-           .getChildFile ("Application Support")
-          #endif
-           .getChildFile ("Paragon")
-           .getChildFile ("Paragon PR7-E")
-           .getChildFile ("Rigs");
+    // Windows: %APPDATA%\Paragon\Paragon PR7-X\Rigs
+    // macOS:   ~/Library/Application Support/Paragon/Paragon PR7-X/Rigs (via userApplicationDataDirectory)
+    // Linux:   ~/.config/Paragon/Paragon PR7-X/Rigs
+    // Its own folder, apart from its siblings': PR7-B's bass rigs don't carry
+    // over. PR7-E's do (the same plugin, renamed in 0.20.0).
+    const auto paragon = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                          #if JUCE_MAC
+                           .getChildFile ("Application Support")
+                          #endif
+                           .getChildFile ("Paragon");
+    const auto base = paragon.getChildFile ("Paragon PR7-X");
+    carryOver (paragon.getChildFile ("Paragon PR7-E"), base);   // PR7-X was PR7-E until 0.20.0
+    return base.getChildFile ("Rigs");
+}
+
+bool RigLibrary::carryOver (const juce::File& oldBase, const juce::File& newBase)
+{
+    if (newBase.exists() || ! oldBase.isDirectory())
+        return false;
+    return oldBase.copyDirectoryTo (newBase);
 }
 
 void RigLibrary::rescan()

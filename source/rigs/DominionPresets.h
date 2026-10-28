@@ -2,7 +2,7 @@
 
 #include "StompPresets.h"
 
-// DOMINION's own presets (0.10.3), apart from PR7-E's rigs: a preset holds
+// DOMINION's own presets (0.10.3), apart from PR7-X's rigs: a preset holds
 // only DOMINION's settings (MODE, DEPTH, DETAIL, the timing, tilts, stereo,
 // scale, output and the depth curve), never its on switch or anything else
 // in the rig. Yours are .pr7dom files in "Dominion Presets" beside the rigs.

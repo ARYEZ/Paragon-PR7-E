@@ -1,6 +1,8 @@
-# Paragon PR7-E: notes for Claude
+# Paragon PR7-X (PR7-E until 0.20.0): notes for Claude
 
 This repository starts as a copy of **Paragon PR7-B** (the bass processor, repo `ARYEZ/Paragon-PR7-B`) at PR7-B **0.11.0**, full history included, to become **Paragon PR7-E**, the **utility** processor of the PR7 family. Its siblings: **PR7-G** (guitar, repo `ARYEZ/Paragon-PR7-G`), **PR7-B** (bass), **PR7-V** (vocal, `ARYEZ/Paragon-PR7-V`) and **PR7-C** (`ARYEZ/Paragon-PR7-C`). Everything below describes how the project is built, tested and released, and how the owner likes to work.
+
+**Renamed PR7-X in 0.20.0** (the owner's ask). `PRODUCT_NAME` "Paragon PR7-X" (bundle `Paragon PR7-X.vst3`, zips `ParagonPR7-X-...`, release title "Paragon PR7-X ..."), the logo's "-X", the user folder "Paragon PR7-X" and settings file. Kept on purpose: `PLUGIN_CODE Pr7e` and `BUNDLE_ID com.paragon.paragonpr7e` (the DAW's identity for it: changing them would orphan every saved project), the repo name `ARYEZ/Paragon-PR7-E`, and "PR7-E x.y" in historical notes. `RigLibrary::carryOver` copies the old "Paragon PR7-E" folder the first time (never overwriting), and `Finish` copies the old settings file. The text below says PR7-E where it describes history.
 
 ## First: make it its own plugin (done in 0.1.0)
 

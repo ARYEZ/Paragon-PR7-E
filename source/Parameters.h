@@ -10,7 +10,7 @@
 //   - before 0.1.0 shipped: PR7-B's ampOn, ampNormalise, cabOn, and the bass
 //     drives' drive*, gotham* and dual*;
 //   - in 0.2.0: tunerMute;
-//   - in 0.3.0, with PR7-B's effects (they were mono, and PR7-E is a stereo
+//   - in 0.3.0, with PR7-B's effects (they were mono, and PR7-X is a stereo
 //     utility): comp*, gateThreshold, fp*, glitch*, lofi*, mod*, delay*,
 //     reverb*, pitchTune, oct*, freeze*;
 //   - in 0.4.0, with the graphic EQ the new EQ replaced: eq33, eq80, eq150,

@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.20.0
+
+- **PR7-E is now Paragon PR7-X,** as you asked: on the unit's badge (an X drawn in the same slanted, speed-cut lettering as the rest of the mark), the header, the rack units' "PR7-X SERIES" lines, the ABOUT text, and the plugin's name in your DAW.
+- **It's still the same plugin to your DAW.** Only the name changed: its plugin ID stays as it was, so projects saved with PR7-E should open with PR7-X, with all their settings and automation. I couldn't try this in a DAW here, so please open one project to check.
+- **Your things come with it.** The first time PR7-X starts, it copies PR7-E's rigs, presets (CONSTRICTOR, DOMINION, GUILLOTINE), EQ Match references, favourites and finish into its own "Paragon PR7-X" folder and settings. PR7-E's originals stay where they were, as a backup.
+- **When you install:** the download is now `Paragon PR7-X.vst3`. **Delete the old `Paragon PR7-E.vst3`** from `C:\Program Files\Common Files\VST3`. Both are the same plugin, so with both installed your DAW would list it twice and might load the old one. Then rescan your plugins.
+- The release zips are now named ParagonPR7-X. The GitHub project keeps its address (Paragon-PR7-E) unless you rename it on GitHub. If you do, GitHub forwards the old links.
+- Also fixed: SETTINGS still said "Press stomp 1 (ORACLE)". ORACLE has been a key beside BYPASS since 0.18.0.
+
 ## 0.19.1
 
 - **The LIMITER is now GUILLOTINE,** as you asked: on its rack unit, its page, the signal chain, its PRESET menu, the tooltips and rig notes, and the parameter names your DAW shows ("Guillotine Gain" and so on). Only the name changed: projects, automation, rigs and presets work as before, and it sounds the same. Its rack unit still says what it is, TRUE PEAK LIMITER, under the name.

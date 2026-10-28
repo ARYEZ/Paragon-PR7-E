@@ -8,7 +8,7 @@
 #include "dsp/effects/MasterLimiter.h"
 #include "dsp/eq/EqDesign.h"
 
-// PR7-E's factory rigs (0.6.0): starting points for the EQ stomp, filed by
+// PR7-X's factory rigs (0.6.0): starting points for the EQ stomp, filed by
 // what they're for. Bank A: vocals and voice; B: drums; C: bass, guitars
 // and keys; D: the full mix; E: mastering.
 //

@@ -2,7 +2,7 @@
 
 #include "StompPresets.h"
 
-// The LIMITER's own presets (0.19.0), apart from PR7-E's rigs: a preset
+// The LIMITER's own presets (0.19.0), apart from PR7-X's rigs: a preset
 // holds the LIMITER's settings (style, GAIN, OUTPUT, the advanced and
 // output settings), never its on switch, UNITY or DELTA (listening aids),
 // or the old THRESHOLD and MAKE UP (GAIN and OUTPUT replaced them). Yours

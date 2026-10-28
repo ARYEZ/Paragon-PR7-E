@@ -5,7 +5,7 @@
 #include <map>
 #include <vector>
 
-// A stomp's own presets, apart from PR7-E's rigs (DOMINION's from 0.10.3,
+// A stomp's own presets, apart from PR7-X's rigs (DOMINION's from 0.10.3,
 // COMP's from 0.14.0): a preset holds only that stomp's settings, never its
 // on switch or anything else in the rig. The factory ones are built in,
 // filed by category; yours are small files in a folder beside the rigs.

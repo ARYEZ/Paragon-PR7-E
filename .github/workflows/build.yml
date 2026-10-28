@@ -61,7 +61,7 @@ jobs:
           curl -sSL -o pluginval.zip \
             "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/${{ matrix.pluginval_zip }}"
           unzip -q pluginval.zip
-          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-E.vst3"
+          PLUGIN="build/ParagonX1_artefacts/Release/VST3/Paragon PR7-X.vst3"
           RUN="${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process --validate"
           if [ "$RUNNER_OS" = "Linux" ]; then
             # pluginval's own Linux VST3 host now and then crashes as it shuts
@@ -138,10 +138,10 @@ jobs:
           mkdir release
           # Artifact storage drops file permissions; put the executable flag
           # back on the macOS and Linux binaries so every host will load them.
-          chmod -R a+x "artifacts/ParagonX1-VST3-macOS/Paragon PR7-E.vst3/Contents/MacOS" \
-                       "artifacts/ParagonX1-VST3-Linux/Paragon PR7-E.vst3/Contents/x86_64-linux"
+          chmod -R a+x "artifacts/ParagonX1-VST3-macOS/Paragon PR7-X.vst3/Contents/MacOS" \
+                       "artifacts/ParagonX1-VST3-Linux/Paragon PR7-X.vst3/Contents/x86_64-linux"
           for os in Windows macOS Linux; do
-            (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-E-${TAG}-${os}-VST3.zip" "Paragon PR7-E.vst3")
+            (cd "artifacts/ParagonX1-VST3-${os}" && zip -qr "../../release/ParagonPR7-X-${TAG}-${os}-VST3.zip" "Paragon PR7-X.vst3")
           done
           ls -l release
 
@@ -166,5 +166,5 @@ jobs:
           # --target creates the tag on this exact commit if it doesn't exist yet.
           gh release create "$TAG" release/*.zip \
             --target "$GITHUB_SHA" \
-            --title "Paragon PR7-E ${TAG}" \
+            --title "Paragon PR7-X ${TAG}" \
             --notes-file notes.md
