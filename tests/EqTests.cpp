@@ -978,8 +978,18 @@ TEST_CASE ("Factory rigs: Kick Punch, Mix Brighter and Master Gentle Polish chan
     // 0.6 dB an octave: 8 kHz (three octaves up) +1.8 dB, 125 Hz -1.8 dB.
     CHECK_THAT (level ("Mix Brighter", 8000.0), WithinAbs (1.8, 0.3));
     CHECK_THAT (level ("Mix Brighter", 125.0), WithinAbs (-1.8, 0.3));
-    // A master's middle barely moves.
-    CHECK_THAT (level ("Master Gentle Polish", 1000.0), WithinAbs (0.0, 0.5));
+    // A master's EQ barely moves the middle. (Its EQ alone: since 0.22.1 a
+    // master is the whole rack, and DOMINION turns a lone test tone down,
+    // as it's meant to; RIG LEVEL makes up what the other units take.)
+    {
+        EqRig rig;
+        loadFactory (rig, "Master Gentle Polish");
+        for (const auto* id : { ParamIDs::domOn, ParamIDs::compOn, ParamIDs::marsOn, ParamIDs::stereoOn })
+            rig.set (id, 0.0f);
+        rig.set (ParamIDs::rigLevel, 0.0f);
+        rig.play (0.3, silence(), silence());
+        CHECK_THAT (outDb (rig, 0.5, 1000.0, -20.0) + 20.0, WithinAbs (0.0, 0.5));
+    }
 }
 
 TEST_CASE ("Genre rigs (0.15.0): each genre's EQ does what its notes say", "[eq][rigs][genres]")
@@ -1353,4 +1363,46 @@ TEST_CASE ("EQ Match: fitting is quick enough to follow DETAIL and AMOUNT as the
     const auto ms = juce::Time::getMillisecondCounterHiRes() - start;
     WARN ("At full detail: " << bands.size() << " bands in " << juce::String (ms, 1) << " ms");
     CHECK (ms < 150.0);
+}
+
+TEST_CASE ("Master rigs: the full chain (0.22.1) is as loud as the master was before", "[eq][rigs][mastering]")
+{
+    // MARS, BINARY, and the DOMINION and CONSTRICTOR some masters gained,
+    // take some level; each rig's RIG LEVEL makes it up, before GUILLOTINE.
+    // Checked on a mix-like noise against the same rig with them off.
+    for (const auto& factory : makeFactoryRigs())
+    {
+        if (factory.bank != Rig::master)
+            continue;
+        double results[2] {};
+        for (int version = 0; version < 2; ++version)
+        {
+            EqRig rig;
+            loadFactory (rig, factory.name);
+            if (version == 0)   // as before: the units this change added, off
+            {
+                rig.set (ParamIDs::marsOn, 0.0f);
+                rig.set (ParamIDs::stereoOn, 0.0f);
+                rig.set (ParamIDs::domOn, 0.0f);
+                rig.set (ParamIDs::rigLevel, 0.0f);
+                if (factory.notes.contains ("Master Four Bands"))
+                    rig.set (ParamIDs::compOn, 0.0f);
+            }
+            // A mix-like signal: mostly the same on both sides (the middle), a little stereo difference.
+            Pink middle, sides;
+            sides.random.setSeed (99);
+            float m = 0.0f, d = 0.0f;
+            int at = -1;
+            const auto next = [&] (int i) { if (i != at) { m = middle() * 2.0f; d = sides() * 0.6f; at = i; } };
+            const auto l = [&] (int i) { next (i); return m + d; };
+            const auto r = [&] (int i) { next (i); return m - d; };
+            rig.play (1.0, l, r);
+            const auto out = rig.play (2.0, l, r);
+            double sum = 0.0;
+            for (auto x : out[0]) sum += (double) x * x;
+            results[version] = 10.0 * std::log10 (sum / (double) out[0].size());
+        }
+        INFO (factory.name);
+        CHECK_THAT (results[1] - results[0], WithinAbs (0.0, 0.5));
+    }
 }

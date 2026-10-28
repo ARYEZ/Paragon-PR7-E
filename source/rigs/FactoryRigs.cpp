@@ -3,6 +3,7 @@
 #include "CompPresets.h"
 #include "DominionPresets.h"
 #include "LimiterPresets.h"
+#include "MarsPresets.h"
 #include "Parameters.h"
 #include "dsp/dominion/Dominion.h"
 #include "dsp/effects/MasterLimiter.h"
@@ -859,6 +860,69 @@ std::vector<Rig> makeFactoryRigs()
             rig.parameters[ParamIDs::limitTruePeak] = 1.0f;
             rig.notes << " GUILLOTINE (the limiter) holds a -1 dBTP ceiling (true peak).";
         }
+
+    // The master rigs are the whole rack (0.22.1, the owner: MARS and BINARY
+    // belong in a full mastering chain of all six units, and nowhere else).
+    // Each runs ECHELON, DOMINION, CONSTRICTOR, MARS, BINARY and GUILLOTINE:
+    // those without a DOMINION or CONSTRICTOR of their own get the gentle
+    // mastering ones; MARS adds a little colour (a mastering preset chosen
+    // to suit the rig; each keeps its level within 2 dB); BINARY folds the
+    // lows to mono (below 120 Hz, 150 Hz for vinyl), the image left as it is;
+    // RIG LEVEL makes up the level the added units take. Our own choices,
+    // made by numbers, not by ear.
+    struct MasterAdd { const char* mars; float makeUpDb; };
+    const std::map<juce::String, MasterAdd> masterChain {
+        { "Master Gentle Polish", { "Tape Warmth", 2.5f } },         { "Master Low-End Control", { "Clean Lows, Warm Top", 2.1f } },
+        { "Master De-Harsh", { "Tube Glow", 2.5f } },                { "Master Width", { "Air Exciter", 2.2f } },
+        { "Master Warm Tilt", { "Transformer Weight", 2.9f } },      { "Master Bright Tilt", { "Tube Glow", 2.3f } },
+        { "Modern Metal Master", { "Three-Band Master", 1.4f } },    { "Metalcore Master", { "Three-Band Master", 1.4f } },
+        { "Djent Master", { "Clean Lows, Warm Top", 0.1f } },        { "Nu Metal Master", { "Transformer Weight", 1.3f } },
+        { "Argent Metal Master", { "Three-Band Master", 1.3f } },    { "Hard Rock Master", { "Tape Warmth", 0.4f } },
+        { "Grunge Master", { "Tape Warmth", 0.4f } },                { "Symphonic Metal Master", { "Tube Glow", 0.2f } },
+        { "Industrial Master", { "Three-Band Master", 1.4f } },
+        { "Ethereal Djent Master", { "Clean Lows, Warm Top", 0.3f } }, { "Dark Synth Metal Master", { "Three-Band Master", 1.3f } },
+        { "Raw 90s Nu Metal Master", { "Tape Warmth", 0.4f } },      { "Clean Prog Djent Master", { "Tube Glow", 0.2f } },
+        { "Cinematic Post-Hardcore Master", { "Transformer Weight", 1.4f } }, { "Swedish Melodic Death Master", { "Three-Band Master", 1.4f } },
+        { "Early 2000s Metalcore Master", { "Tape Warmth", 0.4f } }, { "Polished Nu Metal Master", { "Transformer Weight", 1.3f } },
+        { "Master for Streaming", { "Tape Warmth", 2.3f } },         { "Master Loud Club", { "Three-Band Master", 2.5f } },
+        { "Master CD", { "Tape Warmth", 2.2f } },                    { "Master Hi-Res", { "Tube Glow", 2.2f } },
+        { "Master Gentle & Dynamic", { "Tube Glow", 2.2f } },        { "Master for Vinyl", { "Clean Lows, Warm Top", 2.2f } },
+        { "Master Podcast", { "Tube Glow", 0.9f } },                 { "Master Broadcast R128", { "Tube Glow", 2.2f } },
+        { "Master Broadcast A/85", { "Tube Glow", 2.2f } },
+    };
+    for (auto& rig : rigs)
+    {
+        if (rig.bank != mastering)
+            continue;
+        if (rig.parameters.count (ParamIDs::compOn) == 0)
+        {
+            applyPreset (rig, CompPresets::factory(), "Master Four Bands", ParamIDs::compOn);
+            rig.notes << " CONSTRICTOR: its \"Master Four Bands\" preset.";
+        }
+        if (rig.parameters.count (ParamIDs::domOn) == 0)
+        {
+            applyPreset (rig, DominionPresets::factory(), "Master Polish", ParamIDs::domOn);
+            rig.notes << " DOMINION: its \"Master Polish\" preset.";
+        }
+        const auto found = masterChain.find (rig.name);
+        jassert (found != masterChain.end());   // every master rig has its MARS preset
+        const auto add = found != masterChain.end() ? found->second : MasterAdd { "Tape Warmth", 0.0f };
+        const auto* marsPreset = add.mars;
+        applyPreset (rig, MarsPresets::factory(), marsPreset, ParamIDs::marsOn);
+        rig.notes << " MARS: its \"" << marsPreset << "\" preset.";
+        const auto monoBelow = rig.name == "Master for Vinyl" ? 150.0f : 120.0f;
+        rig.parameters[ParamIDs::stereoOn] = 1.0f;
+        rig.parameters[ParamIDs::stereoMonoOn] = 1.0f;
+        rig.parameters[ParamIDs::stereoMonoFreq] = monoBelow;
+        rig.notes << " BINARY: mono below " << juce::String (juce::roundToInt (monoBelow)) << " Hz, so the low end stays tight and centred.";
+        // What the added units take (measured on a mix-like noise), made up
+        // before GUILLOTINE, so it's driven as before and the loudness stays.
+        if (add.makeUpDb > 0.0f)
+        {
+            rig.parameters[ParamIDs::rigLevel] = add.makeUpDb;
+            rig.notes << " RIG LEVEL +" << juce::String (add.makeUpDb, 1) << " dB makes up what the added units take, so it's as loud as before.";
+        }
+    }
 
     return rigs;
 }

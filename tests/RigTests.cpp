@@ -7,6 +7,7 @@
 #include "rigs/DominionPresets.h"
 #include "rigs/FactoryRigs.h"
 #include "rigs/LimiterPresets.h"
+#include "rigs/MarsPresets.h"
 
 using Catch::Matchers::WithinAbs;
 
@@ -226,7 +227,10 @@ TEST_CASE ("Genre rigs (0.15.0): six parts in nine genres, at the genre's number
                 matches (*rig, CompPresets::factory(), genre, genre + " " + part.comp, &CompPresets::holds);
                 CHECK (rig->notes.contains (genre + " " + part.comp));
             }
-            CHECK ((rig->parameters.count (ParamIDs::domOn) == 1) == (part.dominion != nullptr));
+            // The master has DOMINION too since 0.22.1 (the whole rack): the gentle "Master Polish".
+            CHECK ((rig->parameters.count (ParamIDs::domOn) == 1) == (part.dominion != nullptr || juce::String (part.name) == "Master"));
+            if (part.dominion == nullptr && juce::String (part.name) == "Master")
+                CHECK (rig->notes.contains ("DOMINION: its \"Master Polish\" preset."));
             if (part.dominion != nullptr)
             {
                 CHECK (rig->parameters.at (ParamIDs::domOn) == 1.0f);
@@ -360,7 +364,8 @@ TEST_CASE ("Every preset a factory rig names in its notes exists, and the rig ho
     struct Stomp { const char* label; const std::vector<StompPreset>& presets; bool (*holds) (const juce::String&); };
     const Stomp stomps[] = { { "CONSTRICTOR", CompPresets::factory(), &CompPresets::holds }, { "COMP", CompPresets::factory(), &CompPresets::holds },
                              { "DOMINION", DominionPresets::factory(), &DominionPresets::holds },
-                             { "GUILLOTINE", LimiterPresets::factory(), &LimiterPresets::holds } };
+                             { "GUILLOTINE", LimiterPresets::factory(), &LimiterPresets::holds },
+                             { "MARS", MarsPresets::factory(), &MarsPresets::holds } };
     int checked = 0;
     for (const auto& rig : makeFactoryRigs())
         for (const auto& stomp : stomps)
@@ -654,4 +659,37 @@ TEST_CASE ("A rig file from before 0.3.0 with the pedal on an effect that's gone
     Rig current;
     current.parameters["expressionTarget"] = 1.0f;
     CHECK (Rig::fromXml (*current.toXml())->parameters.at ("expressionTarget") == 1.0f);
+}
+
+TEST_CASE ("Master rigs are the whole rack: all six units on; MARS and BINARY on no other rig", "[rigs][mastering]")
+{
+    // 0.22.1, the owner: MARS and BINARY belong in a full mastering chain.
+    const char* units[] = { ParamIDs::eqOn, ParamIDs::domOn, ParamIDs::compOn, ParamIDs::marsOn, ParamIDs::stereoOn, ParamIDs::limitOn };
+    const auto on = [] (const Rig& rig, const char* id) { return rig.parameters.count (id) == 1 && rig.parameters.at (id) > 0.5f; };
+    int masters = 0;
+    for (const auto& rig : makeFactoryRigs())
+    {
+        INFO (rig.name);
+        if (rig.bank == Rig::master)
+        {
+            ++masters;
+            for (const auto* id : units)
+            {
+                INFO (id);
+                CHECK (on (rig, id));
+            }
+            CHECK (on (rig, ParamIDs::stereoMonoOn));   // BINARY folds the lows to mono...
+            CHECK (rig.parameters.at (ParamIDs::stereoMonoFreq) >= 100.0f);
+            CHECK (rig.parameters.at (ParamIDs::stereoMonoFreq) <= 150.0f);
+            CHECK (rig.parameters.count (ParamIDs::stereoWidth) == 0);   // ...and leaves the image's width as it is
+            CHECK (rig.notes.contains ("MARS: its \""));
+            CHECK (rig.notes.contains ("BINARY: mono below"));
+        }
+        else
+        {
+            CHECK_FALSE (on (rig, ParamIDs::marsOn));
+            CHECK_FALSE (on (rig, ParamIDs::stereoOn));
+        }
+    }
+    CHECK (masters == 32);
 }
