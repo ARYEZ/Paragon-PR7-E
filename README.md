@@ -30,7 +30,7 @@ the stomps are still being planned, one at a time with the owner.
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
 | **7 Limiter** | Inspired by FabFilter Pro-L 2 (our own design; PR7-C's limiter before 0.16.0) | Works: eight styles, look-ahead, true peak, oversampling, loudness meters, dither |
 
-Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, the LIMITER)
+Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE)
 and ORACLE's key; the placeholders will get their place when they're built. Final names are the owner's; none of those
 products' names or branding go on the plugin.
 
@@ -38,7 +38,7 @@ products' names or branding go on the plugin.
 
 - **The unit:** the screen centred along the top (the arrows beside it step through rigs; **SAVE** / **SAVE AS** under it),
   then four rack units, one to a row in the chain's order (styled after a rack of classic studio processors, in the PR7's
-  own parts): **ECHELON, DOMINION, CONSTRICTOR, LIMITER.** Each has a **POWER** footswitch, a ladder of LED bars that
+  own parts): **ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE.** Each has a **POWER** footswitch, a ladder of LED bars that
   meters what it's doing, a screen with its readout, three keys, two knobs, and **EDIT** (or click its name) for its page,
   over a small screen with its preset or style. **PRESETS** browses every rig.
 - **Small keys:** UNDO, REDO, BYPASS, and **ORACLE** (opens its page; lit while it listens).
@@ -74,7 +74,7 @@ products' names or branding go on the plugin.
     LINK, with its gain-reduction meter.
   - **PRESET** (on its page): COMP's own presets, apart from the rigs (vocals, drums, instruments, mix and master,
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
-- **LIMITER (row 4)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
+- **GUILLOTINE (row 4, the limiter)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
   OUTPUT, so nothing can push a peak past it. Click its name for its page.
   - **PRESET** (0.19.0), as CONSTRICTOR's and DOMINION's: mastering targets (each also sets the page's loudness
     TARGET: turn GAIN until INTEGRATED reaches it), mix bus, tracks, and the signature sounds' masters; and your own,
@@ -103,7 +103,7 @@ products' names or branding go on the plugin.
   pedal's screen shows the note and cents, and the page shows the note now and how in tune the notes were sung. The
   reference pitch for A4 is in SETTINGS.
 - **Stereo throughout:** both channels pass through as they came in, apart from what the stomps do (a mono track plays on
-  both speakers). **Signal chain** (bottom strip): input → EQ → DOMINION → COMP → LIMITER → output, growing as the stomps are built.
+  both speakers). **Signal chain** (bottom strip): input → ECHELON → DOMINION → CONSTRICTOR → GUILLOTINE → output, growing as the stomps are built.
 - **PRESENCE** cuts or boosts the top end (above about 3.5 kHz).
 - **Rigs:** SAVE in the header saves the current sound as a rig; **<** and **>** step through rigs; a `*` after the name
   means it's changed since loading. The **PRESETS** tab browses, files (banks A-E), tags and favourites rigs. The factory
@@ -118,7 +118,7 @@ products' names or branding go on the plugin.
     inspired by how a particular record sounds, from what's published about its production and its measured loudness,
     and named for the sound: Ethereal Djent, Dark Synth Metal, Raw 90s Nu Metal, Clean Prog Djent, Cinematic
     Post-Hardcore, Swedish Melodic Death, Early 2000s Metalcore, Polished Nu Metal. Each uses the EQ and presets of the
-    same name in CONSTRICTOR, DOMINION and the LIMITER. Our own reading, not anyone's settings.
+    same name in CONSTRICTOR, DOMINION and GUILLOTINE. Our own reading, not anyone's settings.
   - **More starting points** (0.19.0): one per source at **x51** on (screams, breathy pop vocal, choir, podcast voice;
     toms, room mics, snare bottom, electronic drums; high-gain rhythm, lead and clean guitar, distorted bass, synth lead,
     strings, organ and electric piano), one-job fixes at **x71** on (thin, nasal or harsh vocal; boxy snare, ringing
@@ -127,7 +127,7 @@ products' names or branding go on the plugin.
 - **Undo / redo:** the header arrows, UNDO / REDO on the unit, or Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac). **BYPASS** on
   the unit bypasses the whole plugin.
 - **SETTINGS:** the tuner's reference pitch and the unit's finish.
-- Delay: none, unless COMP's LOOK-AHEAD or the LIMITER's look-ahead, true peak or oversampling are on; your DAW makes
+- Delay: none, unless COMP's LOOK-AHEAD or GUILLOTINE's look-ahead, true peak or oversampling are on; your DAW makes
   up for it on playback.
 
 ## Download

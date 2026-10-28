@@ -301,11 +301,11 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
     {
         auto& s = specs[3];
         s.number = 4;
-        s.name = "LIMITER";
+        s.name = "GUILLOTINE";
         s.kind = "TRUE PEAK LIMITER";
         s.series = "PR7-E SERIES  LOUDNESS";
         s.onParameterIds = { limitOn };
-        s.powerTooltip = "The LIMITER on or off. Click POWER (the word) or EDIT for its page";
+        s.powerTooltip = "GUILLOTINE (the limiter) on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "TRUE PEAK", "Keeps the peaks between the samples under the ceiling too",
                       [&p] { return valueOf (p, limitTruePeak) > 0.5f; }, [&p] { toggle (p, limitTruePeak); } };
         s.keys[1] = { "UNITY", "Hear it at the level it came in",

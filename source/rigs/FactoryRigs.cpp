@@ -166,7 +166,7 @@ namespace
             if (kind.limiter && part.bank == mastering)
             {
                 applyPreset (rig, LimiterPresets::factory(), name + " Master", ParamIDs::limitOn);
-                rig.notes << " LIMITER: its \"" << name << " Master\" preset (GAIN set for a mix peaking around -6 dBFS: "
+                rig.notes << " GUILLOTINE: its \"" << name << " Master\" preset (GAIN set for a mix peaking around -6 dBFS: "
                              "turn it to taste).";
             }
             rigs.push_back (std::move (rig));
@@ -651,7 +651,7 @@ std::vector<Rig> makeFactoryRigs()
         if (lim != nullptr)
         {
             applyPreset (rig, LimiterPresets::factory(), lim, ParamIDs::limitOn);
-            rig.notes << " LIMITER: its \"" << lim << "\" preset.";
+            rig.notes << " GUILLOTINE: its \"" << lim << "\" preset.";
         }
         rigs.push_back (std::move (rig));
     };
@@ -854,7 +854,7 @@ std::vector<Rig> makeFactoryRigs()
             rig.parameters[ParamIDs::limitCeiling] = -1.0f;
             rig.parameters[ParamIDs::limitMode] = (float) effects::limiter::Style::modern;
             rig.parameters[ParamIDs::limitTruePeak] = 1.0f;
-            rig.notes << " The LIMITER (stomp 7) holds a -1 dBTP ceiling (true peak).";
+            rig.notes << " GUILLOTINE (the limiter) holds a -1 dBTP ceiling (true peak).";
         }
 
     return rigs;

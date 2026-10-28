@@ -277,14 +277,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     // Stomp 7, the LIMITER (0.8.0): ranges and defaults as on PR7-C.
     constexpr int v32 = 32;
-    layout.add (makeSwitch (ParamIDs::limitOn, "Limiter", v32, false));
-    layout.add (makeFloat (ParamIDs::limitThreshold, "Limit Threshold", { ParamRanges::limitThresholdMin, 0.0f, 0.1f }, -1.0f, v32, asDb));
-    layout.add (makeFloat (ParamIDs::limitMakeUp, "Limit Make Up", { 0.0f, ParamRanges::limitMakeUpMax, 0.1f }, 0.0f, v32, asDb));
-    layout.add (makeChoice (ParamIDs::limitMode, "Limit Style", v32, ParamRanges::limitModes, ParamRanges::limitDefaultMode));
-    layout.add (makeFloat (ParamIDs::limitMix, "Limit Mix", { 0.0f, 100.0f, 1.0f }, 100.0f, v32,
+    layout.add (makeSwitch (ParamIDs::limitOn, "Guillotine", v32, false));
+    layout.add (makeFloat (ParamIDs::limitThreshold, "Guillotine Threshold", { ParamRanges::limitThresholdMin, 0.0f, 0.1f }, -1.0f, v32, asDb));
+    layout.add (makeFloat (ParamIDs::limitMakeUp, "Guillotine Make Up", { 0.0f, ParamRanges::limitMakeUpMax, 0.1f }, 0.0f, v32, asDb));
+    layout.add (makeChoice (ParamIDs::limitMode, "Guillotine Style", v32, ParamRanges::limitModes, ParamRanges::limitDefaultMode));
+    layout.add (makeFloat (ParamIDs::limitMix, "Guillotine Mix", { 0.0f, 100.0f, 1.0f }, 100.0f, v32,
                            [] (float v, int) { return juce::String (juce::roundToInt (v)) + "%"; }));
-    layout.add (makeSwitch (ParamIDs::limitLink, "Limit Link", v32, true));
-    layout.add (makeFloat (ParamIDs::limitTrim, "Output Trim", { ParamRanges::limitTrimMin, ParamRanges::limitTrimMax, 0.1f }, 0.0f, v32, asDb));
+    layout.add (makeSwitch (ParamIDs::limitLink, "Guillotine Link", v32, true));
+    layout.add (makeFloat (ParamIDs::limitTrim, "Guillotine Output Trim", { ParamRanges::limitTrimMin, ParamRanges::limitTrimMax, 0.1f }, 0.0f, v32, asDb));
 
     // ...and from 0.16.0, after Pro-L 2 (see effects::MasterLimiter).
     {
@@ -292,20 +292,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         const ToText percent = [] (float v, int) { return juce::String (juce::roundToInt (v)) + "%"; };
         const ToText ms = [] (float v, int) { return v < 10.0f ? juce::String (v, 2) + " ms" : v < 1000.0f ? juce::String (juce::roundToInt (v)) + " ms"
                                                                                                 : juce::String (v / 1000.0f, 2) + " s"; };
-        layout.add (makeFloat (ParamIDs::limitGain, "Limit Gain", { 0.0f, ParamRanges::limitGainMax, 0.01f }, 0.0f, v36, asDb));
-        layout.add (makeFloat (ParamIDs::limitCeiling, "Limit Output", { ParamRanges::limitCeilingMin, 0.0f, 0.01f }, -1.0f, v36, asDb));
-        layout.add (makeFloat (ParamIDs::limitLookahead, "Limit Lookahead", { 0.0f, effects::limiter::maxLookaheadMs, 0.01f, 0.5f }, 1.0f, v36, ms));
-        layout.add (makeFloat (ParamIDs::limitAttack, "Limit Attack", logRange (0.5, 500.0), 20.0f, v36, ms));
-        layout.add (makeFloat (ParamIDs::limitRelease, "Limit Release", logRange (10.0, 5000.0), 250.0f, v36, ms));
-        layout.add (makeFloat (ParamIDs::limitLinkTransient, "Limit Link Transients", { 0.0f, 100.0f, 1.0f }, 75.0f, v36, percent));
-        layout.add (makeFloat (ParamIDs::limitLinkRelease, "Limit Link Release", { 0.0f, 100.0f, 1.0f }, 100.0f, v36, percent));
-        layout.add (makeSwitch (ParamIDs::limitTruePeak, "Limit True Peak", v36, false));
-        layout.add (makeChoice (ParamIDs::limitOversampling, "Limit Oversampling", v36, effects::limiter::oversamplingNames, 0));
-        layout.add (makeChoice (ParamIDs::limitDither, "Limit Dither", v36, effects::limiter::ditherNames, 0));
-        layout.add (makeChoice (ParamIDs::limitShaping, "Limit Noise Shaping", v36, effects::limiter::shapingNames, 0));
-        layout.add (makeSwitch (ParamIDs::limitUnity, "Limit Unity Gain", v36, false));
-        layout.add (makeSwitch (ParamIDs::limitDelta, "Limit Delta", v36, false));
-        layout.add (makeSwitch (ParamIDs::limitDcFilter, "Limit DC Filter", v36, false));
+        layout.add (makeFloat (ParamIDs::limitGain, "Guillotine Gain", { 0.0f, ParamRanges::limitGainMax, 0.01f }, 0.0f, v36, asDb));
+        layout.add (makeFloat (ParamIDs::limitCeiling, "Guillotine Output", { ParamRanges::limitCeilingMin, 0.0f, 0.01f }, -1.0f, v36, asDb));
+        layout.add (makeFloat (ParamIDs::limitLookahead, "Guillotine Lookahead", { 0.0f, effects::limiter::maxLookaheadMs, 0.01f, 0.5f }, 1.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitAttack, "Guillotine Attack", logRange (0.5, 500.0), 20.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitRelease, "Guillotine Release", logRange (10.0, 5000.0), 250.0f, v36, ms));
+        layout.add (makeFloat (ParamIDs::limitLinkTransient, "Guillotine Link Transients", { 0.0f, 100.0f, 1.0f }, 75.0f, v36, percent));
+        layout.add (makeFloat (ParamIDs::limitLinkRelease, "Guillotine Link Release", { 0.0f, 100.0f, 1.0f }, 100.0f, v36, percent));
+        layout.add (makeSwitch (ParamIDs::limitTruePeak, "Guillotine True Peak", v36, false));
+        layout.add (makeChoice (ParamIDs::limitOversampling, "Guillotine Oversampling", v36, effects::limiter::oversamplingNames, 0));
+        layout.add (makeChoice (ParamIDs::limitDither, "Guillotine Dither", v36, effects::limiter::ditherNames, 0));
+        layout.add (makeChoice (ParamIDs::limitShaping, "Guillotine Noise Shaping", v36, effects::limiter::shapingNames, 0));
+        layout.add (makeSwitch (ParamIDs::limitUnity, "Guillotine Unity Gain", v36, false));
+        layout.add (makeSwitch (ParamIDs::limitDelta, "Guillotine Delta", v36, false));
+        layout.add (makeSwitch (ParamIDs::limitDcFilter, "Guillotine DC Filter", v36, false));
     }
 
     layout.add (makeFloat (ParamIDs::eqOutput, "Echelon Output", { -36.0f, 36.0f, 0.01f }, 0.0f, v30, asDb));

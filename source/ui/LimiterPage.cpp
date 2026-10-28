@@ -43,7 +43,7 @@ namespace
 //==============================================================================
 LimiterDisplay::LimiterDisplay (ParagonX1AudioProcessor& p) : processor (p)
 {
-    setTitle ("LIMITER levels");
+    setTitle ("GUILLOTINE levels");
     incoming.resize (4096);
     startTimerHz (30);
 }
@@ -201,14 +201,14 @@ LimiterPage::Choice::Choice (juce::AudioProcessorValueTreeState& state, const ch
 LimiterPage::LimiterPage (ParagonX1AudioProcessor& p)
     : processor (p),
       display (p),
-      on (p.getParameters(), ParamIDs::limitOn, "ON", "Switch the LIMITER on or off (the same as stomp 7)"),
+      on (p.getParameters(), ParamIDs::limitOn, "ON", "Switch GUILLOTINE on or off (the same as its POWER switch)"),
       style (p.getParameters(), ParamIDs::limitMode, "STYLE", ParamRanges::limitModes,
              "How it limits. CLEAR stays out of the way; PUNCHY pumps a little, for punch; DYNAMIC lifts the hits first, keeping "
              "their attack; ALL-ROUND in between; AGGRESSIVE clips the top softly, loud and edgy; MODERN lets go fast after a lone "
              "peak, the best start for most music; GLUE starts under the ceiling, like a bus compressor; SAFE never distorts. "
              "BRICK, SOFT and AUTO are the earlier limiter, for older projects"),
       preset (PresetButton::Hooks {
-          "LIMITER",
+          "GUILLOTINE",
           [] () -> const std::vector<StompPreset>& { return LimiterPresets::factory(); },
           [&p] { return p.getLimiterPresets().user(); },
           [&p] { return p.getLimiterPresetName(); },
@@ -475,10 +475,10 @@ void LimiterPage::paint (juce::Graphics& g)
     auto title = topBar.reduced (14, 8).removeFromLeft (200);
     const auto titleFont = juce::FontOptions (19.0f, juce::Font::bold);
     const auto titleArea = title.removeFromTop (title.getHeight() / 2 + 6);
-    const auto titleWidth = (float) juce::GlyphArrangement::getStringWidthInt (titleFont, "LIMITER");
+    const auto titleWidth = (float) juce::GlyphArrangement::getStringWidthInt (titleFont, "GUILLOTINE");
     g.setGradientFill (ParagonLookAndFeel::menuHighlight (titleArea.toFloat().withWidth (titleWidth)));
     g.setFont (titleFont);
-    g.drawText ("LIMITER", titleArea, juce::Justification::bottomLeft, false);
+    g.drawText ("GUILLOTINE", titleArea, juce::Justification::bottomLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (juce::FontOptions (10.5f));
     g.drawText ("Limiter and loudness", title, juce::Justification::topLeft, false);

@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.19.1
+
+- **The LIMITER is now GUILLOTINE,** as you asked: on its rack unit, its page, the signal chain, its PRESET menu, the tooltips and rig notes, and the parameter names your DAW shows ("Guillotine Gain" and so on). Only the name changed: projects, automation, rigs and presets work as before, and it sounds the same. Its rack unit still says what it is, TRUE PEAK LIMITER, under the name.
+
 ## 0.19.0
 
 - **Many more presets, as you asked:** 169 factory rigs (85 before), 123 CONSTRICTOR presets (62), 80 DOMINION presets (41), and the LIMITER has presets now (27).

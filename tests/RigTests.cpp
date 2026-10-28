@@ -316,12 +316,12 @@ TEST_CASE ("Signature sounds (0.19.0): six parts each, at x31 to x38 (bass C41 t
 
 TEST_CASE ("Every preset a factory rig names in its notes exists, and the rig holds exactly its settings", "[rigs][presets]")
 {
-    // "CONSTRICTOR: its "X" preset." (or COMP, DOMINION, LIMITER): the
+    // "CONSTRICTOR: its "X" preset." (or COMP, DOMINION, GUILLOTINE): the
     // stomp's PRESET menu then holds what the rig has.
     struct Stomp { const char* label; const std::vector<StompPreset>& presets; bool (*holds) (const juce::String&); };
     const Stomp stomps[] = { { "CONSTRICTOR", CompPresets::factory(), &CompPresets::holds }, { "COMP", CompPresets::factory(), &CompPresets::holds },
                              { "DOMINION", DominionPresets::factory(), &DominionPresets::holds },
-                             { "LIMITER", LimiterPresets::factory(), &LimiterPresets::holds } };
+                             { "GUILLOTINE", LimiterPresets::factory(), &LimiterPresets::holds } };
     int checked = 0;
     for (const auto& rig : makeFactoryRigs())
         for (const auto& stomp : stomps)
