@@ -9,7 +9,7 @@
 //
 // It's a preference of the person, not part of a project or a rig: kept in a
 // small settings file in the user's application data folder, so every
-// PR7-E opened afterwards, in any project, uses the same finish. Every open
+// PR7-X opened afterwards, in any project, uses the same finish. Every open
 // window repaints when it changes.
 namespace Finish
 {

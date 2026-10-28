@@ -1,7 +1,7 @@
 // The COMP stomp (0.9.0). The first tests are PR7-C's compressor tests
 // (tests/CompressorTests.cpp there), ported: the same compressor, so the same
-// behaviour. Left out: "with the filters on SC it listens through them" (PR7-E
-// has no sidechain filters). The rest check how it sits in PR7-E's chain.
+// behaviour. Left out: "with the filters on SC it listens through them" (PR7-X
+// has no sidechain filters). The rest check how it sits in PR7-X's chain.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -285,8 +285,8 @@ TEST_CASE ("Compressor: a block bigger than promised is handled in pieces", "[co
 
 
 //==============================================================================
-// In PR7-E
-TEST_CASE ("Compressor in PR7-E: it comes after the EQ, so an EQ boost drives it harder", "[comp]")
+// In PR7-X
+TEST_CASE ("Compressor in PR7-X: it comes after the EQ, so an EQ boost drives it harder", "[comp]")
 {
     const auto change = [] (bool boost)
     {
@@ -306,7 +306,7 @@ TEST_CASE ("Compressor in PR7-E: it comes after the EQ, so an EQ boost drives it
     CHECK_THAT (change (true), WithinAbs (2.5, 0.8));
 }
 
-TEST_CASE ("Compressor in PR7-E: off by default, leaving the sound alone; a mono track is compressed on both speakers", "[comp]")
+TEST_CASE ("Compressor in PR7-X: off by default, leaving the sound alone; a mono track is compressed on both speakers", "[comp]")
 {
     ParagonX1AudioProcessor fresh;
     fresh.setPlayConfigDetails (2, 2, sampleRate, blockSize);
@@ -331,7 +331,7 @@ TEST_CASE ("Compressor in PR7-E: off by default, leaving the sound alone; a mono
         REQUIRE_THAT (buffer.getSample (1, i), WithinAbs (buffer.getSample (0, i), 1.0e-7));
 }
 
-TEST_CASE ("Compressor in PR7-E: its rack unit (row 3) switches it, and opens its page", "[comp][ui]")
+TEST_CASE ("Compressor in PR7-X: its rack unit (row 3) switches it, and opens its page", "[comp][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -367,7 +367,7 @@ TEST_CASE ("Compressor in PR7-E: its rack unit (row 3) switches it, and opens it
     CHECK (pages[0]->isVisible());
 }
 
-TEST_CASE ("Compressor in PR7-E: the factory rigs with COMP turn a typical recording down a little, not a lot", "[comp][rigs]")
+TEST_CASE ("Compressor in PR7-X: the factory rigs with COMP turn a typical recording down a little, not a lot", "[comp][rigs]")
 {
     for (const auto* name : { "Lead Vocal", "Rap Vocal", "Drum Bus", "Mix Bus Polish" })
     {

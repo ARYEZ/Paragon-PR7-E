@@ -1,4 +1,6 @@
-# Paragon PR7-E
+# Paragon PR7-X
+
+*(Called PR7-E until 0.20.0: the same plugin, renamed. Your projects, rigs and presets carry over.)*
 
 [![Build](https://github.com/ARYEZ/Paragon-PR7-E/actions/workflows/build.yml/badge.svg)](https://github.com/ARYEZ/Paragon-PR7-E/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/ARYEZ/Paragon-PR7-E)](https://github.com/ARYEZ/Paragon-PR7-E/releases/latest)
@@ -6,7 +8,7 @@
 The utility processor of the Paragon PR7 family: a VST3 plugin drawn as a floor unit, laid out like a DigiTech GSP21's foot controller.
 Built with [JUCE](https://juce.com).
 
-Paragon PR7-E starts from [Paragon PR7-B](https://github.com/ARYEZ/Paragon-PR7-B) 0.11.0, the bass processor. Its
+Paragon PR7-X (PR7-E until 0.20.0) starts from [Paragon PR7-B](https://github.com/ARYEZ/Paragon-PR7-B) 0.11.0, the bass processor. Its
 siblings are [PR7-G](https://github.com/ARYEZ/Paragon-PR7-G) (guitar), PR7-B (bass),
 [PR7-V](https://github.com/ARYEZ/Paragon-PR7-V) (vocal) and [PR7-C](https://github.com/ARYEZ/Paragon-PR7-C). It installs
 alongside all of them and keeps its own rigs and settings.
@@ -17,20 +19,20 @@ alongside all of them and keeps its own rigs and settings.
 
 ## Status
 
-PR7-E is at the start of its own life: it has its own name and identity, and its face of four rack units, but some of
+PR7-X is at the start of its own life: it has its own name and identity, and its face of four rack units, but some of
 the stomps are still being planned, one at a time with the owner.
 
 | Stomp | Plan | Now |
 |---|---|---|
 | **1 Oracle** | Melody to MIDI (inspired by Melodyne and VariAudio, our own design), with the tuner | Works: transcribes as the DAW plays, note editing, drag the MIDI onto a track |
 | **2 Comp** | PR7-C's compressor, plus up to six bands inspired by FabFilter Pro-MB (our own design) | Works: full band, and bands that compress or expand, down or up, with look-ahead, on its own page |
-| **3 Inserts** | Host other plugins in slots inside PR7-E and open their editors (a mini rack) | Placeholder |
+| **3 Inserts** | Host other plugins in slots inside PR7-X and open their editors (a mini rack) | Placeholder |
 | **4 EQ** | An EQ inspired by FabFilter Pro-Q 4 (our own design) | Works: 24 bands on its own page, any of them dynamic, and EQ Match |
 | **5 Dominion** | Resonance suppression inspired by oeksound soothe 3 (our own design) | Works: Soft and Hard, the depth curve, stereo/mid-side, tilts, delta and band listen, on its own page |
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
 | **7 Limiter** | Inspired by FabFilter Pro-L 2 (our own design; PR7-C's limiter before 0.16.0) | Works: eight styles, look-ahead, true peak, oversampling, loudness meters, dither |
 
-Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, the LIMITER)
+Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE)
 and ORACLE's key; the placeholders will get their place when they're built. Final names are the owner's; none of those
 products' names or branding go on the plugin.
 
@@ -38,7 +40,7 @@ products' names or branding go on the plugin.
 
 - **The unit:** the screen centred along the top (the arrows beside it step through rigs; **SAVE** / **SAVE AS** under it),
   then four rack units, one to a row in the chain's order (styled after a rack of classic studio processors, in the PR7's
-  own parts): **ECHELON, DOMINION, CONSTRICTOR, LIMITER.** Each has a **POWER** footswitch, a ladder of LED bars that
+  own parts): **ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE.** Each has a **POWER** footswitch, a ladder of LED bars that
   meters what it's doing, a screen with its readout, three keys, two knobs, and **EDIT** (or click its name) for its page,
   over a small screen with its preset or style. **PRESETS** browses every rig.
 - **Small keys:** UNDO, REDO, BYPASS, and **ORACLE** (opens its page; lit while it listens).
@@ -74,8 +76,11 @@ products' names or branding go on the plugin.
     LINK, with its gain-reduction meter.
   - **PRESET** (on its page): COMP's own presets, apart from the rigs (vocals, drums, instruments, mix and master,
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
-- **LIMITER (row 4)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
+- **GUILLOTINE (row 4, the limiter)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
   OUTPUT, so nothing can push a peak past it. Click its name for its page.
+  - **PRESET** (0.19.0), as CONSTRICTOR's and DOMINION's: mastering targets (each also sets the page's loudness
+    TARGET: turn GAIN until INTEGRATED reaches it), mix bus, tracks, and the signature sounds' masters; and your own,
+    saved in "Limiter Presets" beside your rigs.
   - **GAIN** drives the sound into the **OUTPUT** ceiling. A fast stage looks ahead (**LOOKAHEAD**, 0 to 5 ms) and eases
     into each peak so nothing passes the ceiling; a slower stage (**ATTACK**, **RELEASE**) follows the average level.
     **LINK PEAKS** and **LINK RELEASE**: how much the two sides share each stage.
@@ -100,7 +105,7 @@ products' names or branding go on the plugin.
   pedal's screen shows the note and cents, and the page shows the note now and how in tune the notes were sung. The
   reference pitch for A4 is in SETTINGS.
 - **Stereo throughout:** both channels pass through as they came in, apart from what the stomps do (a mono track plays on
-  both speakers). **Signal chain** (bottom strip): input → EQ → DOMINION → COMP → LIMITER → output, growing as the stomps are built.
+  both speakers). **Signal chain** (bottom strip): input → ECHELON → DOMINION → CONSTRICTOR → GUILLOTINE → output, growing as the stomps are built.
 - **PRESENCE** cuts or boosts the top end (above about 3.5 kHz).
 - **Rigs:** SAVE in the header saves the current sound as a rig; **<** and **>** step through rigs; a `*` after the name
   means it's changed since loading. The **PRESETS** tab browses, files (banks A-E), tags and favourites rigs. The factory
@@ -111,10 +116,20 @@ products' names or branding go on the plugin.
     argent metal, hard rock, grunge, symphonic metal, industrial), at the genre's number in every bank: **x11** modern
     metal to **x19** industrial, so A11 is the modern metal vocal, B11 its drums, C11 its guitars, C21 its bass, D11
     its mix and E11 its master. Each uses the EQ and the genre's COMP and DOMINION presets.
+  - **Signature sounds** (0.19.0): eight sets of six rigs in the same way at **x31** to **x38** (bass C41 to C48), each
+    inspired by how a particular record sounds, from what's published about its production and its measured loudness,
+    and named for the sound: Ethereal Djent, Dark Synth Metal, Raw 90s Nu Metal, Clean Prog Djent, Cinematic
+    Post-Hardcore, Swedish Melodic Death, Early 2000s Metalcore, Polished Nu Metal. Each uses the EQ and presets of the
+    same name in CONSTRICTOR, DOMINION and GUILLOTINE. Our own reading, not anyone's settings.
+  - **More starting points** (0.19.0): one per source at **x51** on (screams, breathy pop vocal, choir, podcast voice;
+    toms, room mics, snare bottom, electronic drums; high-gain rhythm, lead and clean guitar, distorted bass, synth lead,
+    strings, organ and electric piano), one-job fixes at **x71** on (thin, nasal or harsh vocal; boxy snare, ringing
+    toms, cymbal wash; honky guitar, guitar fizz, muddy bass; boomy, honky or sibilant mix) and mastering targets at
+    **E51** on (streaming, loud club, CD, hi-res, gentle, vinyl, podcast, broadcast R128 and A/85).
 - **Undo / redo:** the header arrows, UNDO / REDO on the unit, or Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac). **BYPASS** on
   the unit bypasses the whole plugin.
 - **SETTINGS:** the tuner's reference pitch and the unit's finish.
-- Delay: none, unless COMP's LOOK-AHEAD or the LIMITER's look-ahead, true peak or oversampling are on; your DAW makes
+- Delay: none, unless COMP's LOOK-AHEAD or GUILLOTINE's look-ahead, true peak or oversampling are on; your DAW makes
   up for it on playback.
 
 ## Download
@@ -122,7 +137,7 @@ products' names or branding go on the plugin.
 Get the latest version from the **[Releases](https://github.com/ARYEZ/Paragon-PR7-E/releases/latest)** page: download
 the zip for your computer. (Builds of every push also appear under **Actions** → a run → **Artifacts**.)
 
-Unzip it and copy `Paragon PR7-E.vst3` to your VST3 folder:
+Unzip it and copy `Paragon PR7-X.vst3` to your VST3 folder:
 
 | OS | VST3 folder |
 |---|---|
@@ -131,7 +146,7 @@ Unzip it and copy `Paragon PR7-E.vst3` to your VST3 folder:
 | Linux | `~/.vst3` |
 
 **macOS:** the build isn't code-signed yet, so macOS will block it. After copying, run
-`xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/"Paragon PR7-E.vst3"` once.
+`xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/"Paragon PR7-X.vst3"` once.
 
 ## Making a release
 
@@ -165,12 +180,12 @@ PARAGON_SNAPSHOT=editor.png ./build/tests/ParagonX1Tests "[snapshot]"
 
 ## License
 
-Paragon PR7-E is free software under the [GNU Affero General Public License v3](LICENSE.md),
+Paragon PR7-X is free software under the [GNU Affero General Public License v3](LICENSE.md),
 which is required by JUCE's open-source licence.
 
 It uses:
 - [JUCE](https://github.com/juce-framework/JUCE): AGPLv3
 - The Inter typeface (in `resources/fonts`) by Rasmus Andersson, under the SIL Open Font License
 
-FabFilter Pro-Q and Pro-MB, oeksound soothe and Soundtheory Gullfoss are their makers' products. PR7-E's stomps are only inspired
+FabFilter Pro-Q and Pro-MB, oeksound soothe and Soundtheory Gullfoss are their makers' products. PR7-X's stomps are only inspired
 by how they're described and behave; it isn't affiliated with or endorsed by any of them.

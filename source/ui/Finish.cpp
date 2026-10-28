@@ -11,7 +11,7 @@ namespace Finish
         juce::PropertiesFile::Options settingsOptions()
         {
             juce::PropertiesFile::Options options;
-            options.applicationName = "Paragon PR7-E";   // its own file, so PR7-E and its siblings each remember their own finish
+            options.applicationName = "Paragon PR7-X";   // its own file, so PR7-X and its siblings each remember their own finish
             options.folderName = "Paragon";
             options.filenameSuffix = "settings";
             options.osxLibrarySubFolder = "Application Support";
@@ -22,7 +22,12 @@ namespace Finish
         {
             State()
             {
-                // Read once, the first time anything is drawn.
+                // Read once, the first time anything is drawn. PR7-E's choice
+                // carries over the first time (renamed PR7-X in 0.20.0).
+                auto old = settingsOptions();
+                old.applicationName = "Paragon PR7-E";
+                if (const auto from = old.getDefaultFile(), to = settingsOptions().getDefaultFile(); from.existsAsFile() && ! to.exists())
+                    to.getParentDirectory().createDirectory() && from.copyFileTo (to);
                 juce::PropertiesFile file (settingsOptions());
                 const auto saved = file.getIntValue (settingKey, 0);
                 type = saved == (int) Type::pearlBlack || saved == (int) Type::pearlWhiteNeon ? (Type) saved : Type::pearlWhite;
@@ -34,7 +39,7 @@ namespace Finish
 
         State& state()
         {
-            // Shared by every PR7-E window open in the DAW (they're in one
+            // Shared by every PR7-X window open in the DAW (they're in one
             // process), and only touched on the message thread.
             static State instance;
             return instance;

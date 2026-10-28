@@ -8,8 +8,8 @@
 namespace effects
 {
     // Ported from Paragon PR7-C 0.4.1 (source/dsp/Limiter.*), unchanged but
-    // for process() taking a block (PR7-E works through a block in pieces).
-    // PR7-E's LIMITER stomp: see Parameters.h.
+    // for process() taking a block (PR7-X works through a block in pieces).
+    // PR7-X's LIMITER stomp: see Parameters.h.
     //
     // The channel limiter, in stereo: a peak (not RMS) limiter with no
     // look-ahead, so it adds no delay. It reacts to every peak at once, so on

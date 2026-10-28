@@ -1,6 +1,6 @@
 // The LIMITER stomp (0.8.0). The first tests are PR7-C's limiter tests
 // (tests/LimiterTests.cpp there), ported: the same limiter, so the same
-// behaviour. The rest check how it sits in PR7-E's chain.
+// behaviour. The rest check how it sits in PR7-X's chain.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -212,8 +212,8 @@ TEST_CASE ("Limiter: switching it on, or between modes, doesn't click", "[limit]
 }
 
 //==============================================================================
-// In PR7-E
-TEST_CASE ("Limiter in PR7-E: last in the chain, so turning OUTPUT up can't push a peak past it", "[limit]")
+// In PR7-X
+TEST_CASE ("Limiter in PR7-X: last in the chain, so turning OUTPUT up can't push a peak past it", "[limit]")
 {
     auto limiter = makeLimiter (-3.0f);
     set (*limiter, ParamIDs::outputGain, 12.0f);
@@ -224,7 +224,7 @@ TEST_CASE ("Limiter in PR7-E: last in the chain, so turning OUTPUT up can't push
     CHECK (limiter->getLatencySamples() == 0);   // and it adds no delay
 }
 
-TEST_CASE ("Limiter in PR7-E: OUTPUT TRIM comes after it (moving the ceiling), only while it's on", "[limit]")
+TEST_CASE ("Limiter in PR7-X: OUTPUT TRIM comes after it (moving the ceiling), only while it's on", "[limit]")
 {
     auto limiter = makeLimiter (-10.0f);
     set (*limiter, ParamIDs::limitTrim, -4.0f);
@@ -240,7 +240,7 @@ TEST_CASE ("Limiter in PR7-E: OUTPUT TRIM comes after it (moving the ceiling), o
     CHECK (std::abs (settledChangeDb (*limiter, -3.0f)) < 0.01f);
 }
 
-TEST_CASE ("Limiter in PR7-E: off by default, leaving the sound alone; a mono track is limited on both speakers", "[limit]")
+TEST_CASE ("Limiter in PR7-X: off by default, leaving the sound alone; a mono track is limited on both speakers", "[limit]")
 {
     ParagonX1AudioProcessor fresh;
     fresh.setPlayConfigDetails (2, 2, sampleRate, blockSize);
@@ -259,7 +259,7 @@ TEST_CASE ("Limiter in PR7-E: off by default, leaving the sound alone; a mono tr
         REQUIRE_THAT (buffer.getSample (1, i), WithinAbs (buffer.getSample (0, i), 1.0e-7));
 }
 
-TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", "[limit][rigs]")
+TEST_CASE ("Limiter in PR7-X: the mastering factory rigs hold their ceiling (-1 dB, or their own target's)", "[limit][rigs]")
 {
     for (const auto& rig : makeFactoryRigs())
     {
@@ -274,11 +274,14 @@ TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", 
         processor.loadRig (*entry);
         auto hits = drumHits (96000);
         process (processor, hits);
-        CHECK (peakDb (hits) <= -1.0f + 0.001f);
+        // -1 dB unless a LIMITER preset sets its own (0.19.0: CD and club -0.3, vinyl -3, US broadcast -2).
+        const auto ceiling = rig.parameters.count (ParamIDs::limitCeiling) > 0 ? rig.parameters.at (ParamIDs::limitCeiling) : -1.0f;
+        CHECK (ceiling <= -0.3f);
+        CHECK (peakDb (hits) <= ceiling + 0.001f);
     }
 }
 
-TEST_CASE ("Limiter in PR7-E: its rack unit (row 4) switches it, and its POWER name opens its own page", "[limit][ui]")
+TEST_CASE ("Limiter in PR7-X: its rack unit (row 4) switches it, and its POWER name opens its own page", "[limit][ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());

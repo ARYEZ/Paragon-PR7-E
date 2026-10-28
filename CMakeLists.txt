@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonX1 VERSION 0.18.1 LANGUAGES C CXX)
+project(ParagonX1 VERSION 0.20.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,11 +20,11 @@ option(PARAGON_BUILD_TESTS "Build the unit tests" ON)
 include(cmake/Dependencies.cmake)
 
 juce_add_plugin(ParagonX1
-    PRODUCT_NAME             "Paragon PR7-E" # the utility processor of the PR7 family: its own name, bundle ID and plugin code, so it installs beside the others
+    PRODUCT_NAME             "Paragon PR7-X" # the utility processor of the PR7 family (PR7-E until 0.20.0): its own name, bundle ID and plugin code, so it installs beside the others
     COMPANY_NAME             "Paragon"
-    BUNDLE_ID                "com.paragon.paragonpr7e"
+    BUNDLE_ID                "com.paragon.paragonpr7e"   # kept from PR7-E, with the plugin code: the same plugin to a DAW, so projects open it
     PLUGIN_MANUFACTURER_CODE Prgn     # four characters, at least one upper case
-    PLUGIN_CODE              Pr7e     # four characters, exactly one upper case; never PR7-G's Px1a, PR7-B's Pr7b, PR7-V's Pr7v or PR7-C's Pr7c
+    PLUGIN_CODE              Pr7e     # kept from PR7-E (renamed PR7-X in 0.20.0): changing it would orphan every saved project; four characters, exactly one upper case; never PR7-G's Px1a, PR7-B's Pr7b, PR7-V's Pr7v or PR7-C's Pr7c
     FORMATS                  VST3
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         TRUE    # MIDI CC 11 for the expression pedal
@@ -65,6 +65,7 @@ target_sources(ParagonX1
         source/rigs/FactoryRigs.cpp
         source/rigs/DominionPresets.cpp
         source/rigs/CompPresets.cpp
+        source/rigs/LimiterPresets.cpp
         source/rigs/RigLibrary.cpp
         source/ui/LevelMeter.cpp
         source/ui/Logo.cpp

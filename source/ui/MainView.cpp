@@ -137,7 +137,7 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
           { "ECHELON", Icons::Type::eq, chainColour (0, 4), ParamIDs::eqOn },
           { "DOMINION", Icons::Type::filterPitch, chainColour (1, 4), ParamIDs::domOn },
           { "CONSTRICTOR", Icons::Type::comp, chainColour (2, 4), ParamIDs::compOn },
-          { "LIMITER", Icons::Type::comp, chainColour (3, 4), ParamIDs::limitOn } }),
+          { "GUILLOTINE", Icons::Type::comp, chainColour (3, 4), ParamIDs::limitOn } }),
       rigBrowser (processorToShow),
       settingsPage (processorToShow),
       eqPage (processorToShow),

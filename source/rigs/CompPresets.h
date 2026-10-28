@@ -2,7 +2,7 @@
 
 #include "StompPresets.h"
 
-// COMP's own presets (0.14.0), apart from PR7-E's rigs: a preset holds
+// COMP's own presets (0.14.0), apart from PR7-X's rigs: a preset holds
 // COMP's settings (the full band and its switch, the bands, LOOK-AHEAD and
 // MIX), never its on switch or anything else in the rig. Yours are .pr7comp
 // files in "Comp Presets" beside the rigs.

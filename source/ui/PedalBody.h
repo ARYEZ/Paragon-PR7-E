@@ -6,7 +6,7 @@
 // a thick bevelled rim with the red-orange light spilling round it, the
 // satin face plate with screws in its corners, recessed section panels
 // (the slot row and the footswitch row), the panels behind the slot windows, the
-// PARAGON PR7-E badge, and the bay on the right that the expression pedal sits
+// PARAGON PR7-X badge, and the bay on the right that the expression pedal sits
 // in. Purely visual: the controls on it are separate components on top.
 class PedalBody final : public juce::Component
 {
@@ -19,8 +19,8 @@ public:
         juce::Rectangle<float> face;                       // the main face plate
         juce::Rectangle<float> pedalBay;                   // the expression pedal's housing
         std::vector<juce::Rectangle<float>> sections;      // raised panels (slot row, footswitch row)
-        std::vector<juce::Rectangle<float>> insets;        // recessed panels (none on PR7-E: the slot windows went with the amp and cab)
-        juce::Rectangle<float> badge;                      // PARAGON over the PR7-E mark
+        std::vector<juce::Rectangle<float>> insets;        // recessed panels (none on PR7-X: the slot windows went with the amp and cab)
+        juce::Rectangle<float> badge;                      // PARAGON over the PR7-X mark
         juce::Path printedRed, printedInk;                 // lines printed on the face (the tuner bracket, SAVE—SAVE AS)
     };
     void setGeometry (Geometry);

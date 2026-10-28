@@ -958,7 +958,9 @@ TEST_CASE ("Factory rigs: none boosts wildly, mastering ones move 2 dB at most, 
                 REQUIRE (std::isfinite (sample));
                 peak = std::max (peak, std::abs (sample));
             }
-        CHECK (peak < 0.8f);
+        // (Mastering rigs whose LIMITER drives it louder may go up to their ceiling.)
+        const auto limited = factory.parameters.count (ParamIDs::limitGain) > 0 && factory.parameters.at (ParamIDs::limitGain) > 0.0f;
+        CHECK (peak < (limited ? juce::Decibels::decibelsToGain (factory.parameters.at (ParamIDs::limitCeiling)) + 0.001f : 0.8f));
     }
 }
 

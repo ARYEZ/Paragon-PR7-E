@@ -30,7 +30,7 @@ public:
     struct Spec
     {
         int number = 1;
-        juce::String name, kind, series;               // ECHELON / PARAMETRIC EQUALIZER / PR7-E SERIES ...
+        juce::String name, kind, series;               // ECHELON / PARAMETRIC EQUALIZER / PR7-X SERIES ...
         juce::StringArray onParameterIds;              // POWER
         std::array<Key, 3> keys;
         std::array<Knob, 2> knobs;

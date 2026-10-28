@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "PluginProcessor.h"
+#include "ui/PresetButton.h"
 
 // The LIMITER's level display (0.16.0): the last few seconds, scrolling.
 // Grey: the level going in (with GAIN); the gradient: what comes out; red
@@ -46,7 +47,7 @@ public:
     void refresh() { timerCallback(); }   // the held readings and the controls, now
 
     // The loudness target (LUFS) and which reading is the big one (0 momentary, 1 short term, 2 integrated): saved with the project.
-    static constexpr const char* targetKey = "limitLoudnessTarget";
+    static constexpr const char* targetKey = LimiterPresetTraits::targetKey;
     static constexpr const char* timeScaleKey = "limitLoudnessTimeScale";
 
     void paint (juce::Graphics&) override;
@@ -87,6 +88,8 @@ private:
     Toggle on;
     Choice style;
     juce::TextButton back { "BACK TO PEDAL" };
+    PresetButton preset;
+    juce::Label presetLabel { {}, "PRESET" };
 
     juce::Slider gain { juce::Slider::LinearVertical, juce::Slider::TextBoxBelow };
     juce::Label gainLabel { {}, "GAIN" };

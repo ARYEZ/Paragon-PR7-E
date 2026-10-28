@@ -13,7 +13,7 @@
 
 namespace effects
 {
-    // PR7-E's LIMITER from 0.16.0 (stomp 7), inspired by FabFilter Pro-L 2.
+    // PR7-X's LIMITER from 0.16.0 (stomp 7), inspired by FabFilter Pro-L 2.
     // Our own design: Pro-L 2's algorithms aren't published, so this follows
     // what its manual says each control does, not how it does it.
     //

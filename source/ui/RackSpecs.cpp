@@ -102,7 +102,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 1;
         s.name = "ECHELON";
         s.kind = "PARAMETRIC EQUALIZER";
-        s.series = "PR7-E SERIES  24 BANDS";
+        s.series = "PR7-X SERIES  24 BANDS";
         s.onParameterIds = { eqOn };
         s.powerTooltip = "ECHELON on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "AUTO GAIN", "Keeps the level the same as you EQ, so louder doesn't fool you",
@@ -192,7 +192,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 2;
         s.name = "DOMINION";
         s.kind = "RESONANCE SUPPRESSOR";
-        s.series = "PR7-E SERIES  SOFT / HARD";
+        s.series = "PR7-X SERIES  SOFT / HARD";
         s.onParameterIds = { domOn };
         s.powerTooltip = "DOMINION on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "HARD", "HARD: turns down what's loud, at any frequency; off (SOFT): what sticks out of the sound around it",
@@ -250,7 +250,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         s.number = 3;
         s.name = "CONSTRICTOR";
         s.kind = "COMPRESSOR  6 BANDS";
-        s.series = "PR7-E SERIES  VCA OPTO FET";
+        s.series = "PR7-X SERIES  VCA OPTO FET";
         s.onParameterIds = { compOn };
         s.powerTooltip = "CONSTRICTOR on or off. Click POWER (the word) or EDIT for its page";
         const auto character = [&p] (int which) { return [&p, which] { return juce::roundToInt (valueOf (p, compCharacter)) == which; }; };
@@ -301,11 +301,11 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
     {
         auto& s = specs[3];
         s.number = 4;
-        s.name = "LIMITER";
+        s.name = "GUILLOTINE";
         s.kind = "TRUE PEAK LIMITER";
-        s.series = "PR7-E SERIES  LOUDNESS";
+        s.series = "PR7-X SERIES  LOUDNESS";
         s.onParameterIds = { limitOn };
-        s.powerTooltip = "The LIMITER on or off. Click POWER (the word) or EDIT for its page";
+        s.powerTooltip = "GUILLOTINE (the limiter) on or off. Click POWER (the word) or EDIT for its page";
         s.keys[0] = { "TRUE PEAK", "Keeps the peaks between the samples under the ceiling too",
                       [&p] { return valueOf (p, limitTruePeak) > 0.5f; }, [&p] { toggle (p, limitTruePeak); } };
         s.keys[1] = { "UNITY", "Hear it at the level it came in",
@@ -344,8 +344,8 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
             bar (g, glass.reduced (glass.getWidth() * 0.045f, 0.0f).withTop (glass.getBottom() - glass.getHeight() * 0.18f).withHeight (glass.getHeight() * 0.06f),
                  reduction / 12.0f);
         };
-        s.footTitle = "STYLE";
-        s.footText = [&p] { return textOf (p, limitMode); };
+        s.footTitle = "PRESET";   // its style is on the screen (STYLE here until 0.19.0)
+        s.footText = [&p] { return p.getLimiterPresetName() + (p.isLimiterPresetModified() ? " *" : ""); };
         s.onEdit = [actions] { actions.openPage (3); };
     }
     return specs;

@@ -188,7 +188,7 @@ TEST_CASE ("Four rack units, one to a row in the chain's order, each switched by
     std::vector<RackUnit*> racks;
     findAll (*editor, racks);
     REQUIRE (racks.size() == 4);
-    const juce::StringArray names { "ECHELON", "DOMINION", "CONSTRICTOR", "LIMITER" };
+    const juce::StringArray names { "ECHELON", "DOMINION", "CONSTRICTOR", "GUILLOTINE" };
     for (size_t i = 0; i < racks.size(); ++i)
     {
         INFO (names[(int) i]);
@@ -315,7 +315,7 @@ TEST_CASE ("BYPASS passes the clean guitar, on both channels", "[ui][bypass]")
 
 TEST_CASE ("No latency: BYPASS and the processed sound line up with the input", "[ui][bypass]")
 {
-    // Nothing in PR7-E's chain looks ahead (the NAM amp, which did, went with
+    // Nothing in PR7-X's chain looks ahead (the NAM amp, which did, went with
     // PR7-B's bass blocks), so the DAW needn't compensate and bypassing
     // can't shift the sound in time.
     ParagonX1AudioProcessor processor;
