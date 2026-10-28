@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonX1 VERSION 0.21.0 LANGUAGES C CXX)
+project(ParagonX1 VERSION 0.22.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,10 @@ target_sources(ParagonX1
         source/dsp/effects/Limiter.cpp
         source/dsp/effects/Loudness.cpp
         source/dsp/effects/MasterLimiter.cpp
+        source/dsp/effects/Mars.cpp
+        source/dsp/effects/MarsModulation.cpp
+        source/dsp/effects/PitchShifter.cpp
+        source/dsp/effects/StereoTools.cpp
         source/dsp/eq/EqDesign.cpp
         source/dsp/eq/ParametricEq.cpp
         source/dsp/eq/EqMatch.cpp
@@ -66,6 +70,7 @@ target_sources(ParagonX1
         source/rigs/DominionPresets.cpp
         source/rigs/CompPresets.cpp
         source/rigs/LimiterPresets.cpp
+        source/rigs/MarsPresets.cpp
         source/rigs/RigLibrary.cpp
         source/ui/LevelMeter.cpp
         source/ui/Logo.cpp
@@ -85,6 +90,8 @@ target_sources(ParagonX1
         source/ui/OraclePage.cpp
         source/ui/CompPage.cpp
         source/ui/LimiterPage.cpp
+        source/ui/MarsPage.cpp
+        source/ui/StereoPage.cpp
         source/ui/RackUnit.cpp
         source/ui/RackSpecs.cpp
         source/ui/PresetButton.cpp

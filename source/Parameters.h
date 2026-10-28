@@ -118,12 +118,41 @@ namespace ParamIDs
     inline constexpr auto limitDelta         = "limitDelta";
     inline constexpr auto limitDcFilter      = "limitDcFilter";
 
+    // MARS (0.22.0): saturation, PR7-V's MARS (inspired by FabFilter Saturn
+    // 2) brought over, one engine per side. After CONSTRICTOR, before STEREO
+    // and the LIMITER. (Its modulation isn't exposed yet.)
+    inline constexpr auto marsOn      = "marsOn";
+    inline constexpr auto marsBands   = "marsBands";     // choice: 1 to 4 bands, by index
+    inline constexpr auto marsCross1  = "marsCross1";    // Hz
+    inline constexpr auto marsCross2  = "marsCross2";
+    inline constexpr auto marsCross3  = "marsCross3";
+    inline constexpr auto marsSlope   = "marsSlope";     // choice: effects::Mars::slopeNames
+    inline constexpr auto marsInput   = "marsInput";     // dB
+    inline constexpr auto marsOutput  = "marsOutput";    // dB
+    inline constexpr auto marsMix     = "marsMix";       // 0 to 1
+    inline constexpr auto marsQuality = "marsQuality";   // choice: effects::Mars::qualityNames
+    // Each of the four bands: "marsB1Drive", "marsB3Style"... (PR7-V's are
+    // "mb1Drive": here "mb" is CONSTRICTOR's bands, and its presets hold
+    // every "mb" parameter).
+    inline const juce::StringArray marsBandParts { "On", "Style", "Drive", "Dynamics", "Feedback", "FbFreq",
+                                                   "Bass", "Mid", "Treble", "Presence", "Mix", "Level" };
+    inline juce::String marsBand (int band, const juce::String& part) { return "marsB" + juce::String (band + 1) + part; }
+
+    // BINARY (0.22.0; "stereo" in IDs and code): PR7-C's MONO MAKER and WIDTH, after MARS, before the
+    // LIMITER; MONO is for listening (not in rigs).
+    inline constexpr auto stereoOn       = "stereoOn";
+    inline constexpr auto stereoMonoOn   = "stereoMonoOn";
+    inline constexpr auto stereoMonoFreq = "stereoMonoFreq";   // Hz
+    inline constexpr auto stereoWidthOn  = "stereoWidthOn";
+    inline constexpr auto stereoWidth    = "stereoWidth";      // %: 100 = as it was
+    inline constexpr auto stereoListenMono = "stereoListenMono";
+
     // Global settings: kept when switching rigs. Everything else is part of a rig.
     // The expression pedal's position is global for the same reason a real
     // pedal's is: it's where your foot is, not part of the sound. What the
     // pedal is assigned to, and its range, are saved with each rig.
     // The LIMITER's UNITY and DELTA are for listening while you set it, not part of a sound.
-    inline const juce::StringArray notInRigs { inputGain, outputGain, bypass, tunerOn, expression, limitUnity, limitDelta };
+    inline const juce::StringArray notInRigs { inputGain, outputGain, bypass, tunerOn, expression, limitUnity, limitDelta, stereoListenMono };
 }
 
 namespace ExpressionTargets

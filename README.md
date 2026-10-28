@@ -31,16 +31,19 @@ the stomps are still being planned, one at a time with the owner.
 | **5 Dominion** | Resonance suppression inspired by oeksound soothe 3 (our own design) | Works: Soft and Hard, the depth curve, stereo/mid-side, tilts, delta and band listen, on its own page |
 | **6 Auto EQ** | Adaptive EQ inspired by Soundtheory Gullfoss (a "maybe"; our own design) | Placeholder |
 | **7 Limiter** | Inspired by FabFilter Pro-L 2 (our own design; PR7-C's limiter before 0.16.0) | Works: eight styles, look-ahead, true peak, oversampling, loudness meters, dither |
+| **Mars** | Saturation: PR7-V's MARS (inspired by FabFilter Saturn 2, our own design) | Works (0.22.0): 1 to 4 bands, 21 styles, presets, on its own page |
+| **Binary** | Stereo tools: PR7-C's mono maker and width, with a correlation meter | Works (0.22.0): mono maker, width, scope, listen in mono |
 
-Since 0.18.0 the unit has a rack unit for each built stomp in the chain (ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE)
+Since 0.18.0 the unit has a rack unit for each built stomp in the chain (since 0.22.0 six: ECHELON, DOMINION,
+CONSTRICTOR, MARS, BINARY, GUILLOTINE)
 and ORACLE's key; the placeholders will get their place when they're built. Final names are the owner's; none of those
 products' names or branding go on the plugin.
 
 ## Using it
 
 - **The unit:** the screen centred along the top (the arrows beside it step through rigs; **SAVE** / **SAVE AS** under it),
-  then four rack units, one to a row in the chain's order (styled after a rack of classic studio processors, in the PR7's
-  own parts): **ECHELON, DOMINION, CONSTRICTOR, GUILLOTINE.** Each has a **POWER** footswitch, a ladder of LED bars that
+  then six rack units, one to a row in the chain's order (styled after a rack of classic studio processors, in the PR7's
+  own parts): **ECHELON, DOMINION, CONSTRICTOR, MARS, BINARY, GUILLOTINE.** Each has a **POWER** footswitch, a ladder of LED bars that
   meters what it's doing, a screen with its readout, three keys, two knobs, and **EDIT** (or click its name) for its page,
   over a small screen with its preset or style. **PRESETS** browses every rig.
 - **Small keys:** UNDO, REDO, BYPASS, and **ORACLE** (opens its page; lit while it listens).
@@ -76,7 +79,23 @@ products' names or branding go on the plugin.
     LINK, with its gain-reduction meter.
   - **PRESET** (on its page): COMP's own presets, apart from the rigs (vocals, drums, instruments, mix and master,
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
-- **GUILLOTINE (row 4, the limiter)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
+- **MARS (row 4, saturation)**, PR7-V's MARS (inspired by FabFilter Saturn 2; our own design from its manual), after
+  CONSTRICTOR. One engine per side, so left and right stay apart. EDIT opens its page.
+  - Up to four **BANDS** split at crossovers you drag on the display (the bands add back up flat); each band has its own
+    **STYLE** (21: tube, tape, transformer, amp and effects), **DRIVE** (its level kept even, so it adds colour rather
+    than loudness; or drag up and down in the band), **DYNAMICS** (gate to compression), **FEEDBACK** and **FB FREQ**,
+    **BASS / MID / TREBLE / PRESENCE** after the saturation, **MIX** and **LEVEL**; switch a band off to leave it clean.
+  - **INPUT**, **OUTPUT** and **MIX** for all of it; **QUALITY** (1x, 4x, 8x oversampling: the rack unit's three keys)
+    and the crossovers' **SLOPE**. No delay.
+  - **PRESET**: mastering, mix bus, drums, bass, guitars, synths and keys, vocals and creative; yours go in "Mars
+    Presets" beside your rigs. Each factory preset's OUTPUT keeps its level within 2 dB of what went in.
+- **BINARY (row 5, the stereo tools)**, PR7-C's MONO MAKER and WIDTH, after MARS, before GUILLOTINE.
+  - **MONO MAKER** folds everything below **MONO BELOW** (20 to 500 Hz) to the middle, steeply, leaving the image above
+    it as it was. **WIDTH**: 0% mono, 100% as it was, 200% twice as wide; only the sides change, so the mono sum stays.
+  - The page shows the image as a scope and the **correlation** (+1 mono, 0 very wide, under 0 out of phase); the
+    rack unit's ladder and screen show it too. **MONO** (LISTEN IN MONO) folds everything to mono to check it; not
+    saved in rigs.
+- **GUILLOTINE (row 6, the limiter)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
   OUTPUT, so nothing can push a peak past it. Click its name for its page.
   - **PRESET** (0.19.0), as CONSTRICTOR's and DOMINION's: mastering targets (each also sets the page's loudness
     TARGET: turn GAIN until INTEGRATED reaches it), mix bus, tracks, and the signature sounds' masters; and your own,

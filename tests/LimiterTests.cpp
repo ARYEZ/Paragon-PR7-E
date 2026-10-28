@@ -297,12 +297,12 @@ TEST_CASE ("Limiter in PR7-X: its rack unit (row 4) switches it, and its POWER n
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    REQUIRE (stomps.size() == 6);   // the rack units' POWER switches, in the chain's order
     REQUIRE (page != nullptr);
-    CHECK_FALSE (stomps[3]->isPlaceholder());
+    CHECK_FALSE (stomps[5]->isPlaceholder());
     CHECK_FALSE (page->isVisible());
-    stomps[3]->onSelect();
+    stomps[5]->onSelect();
     CHECK (page->isVisible());
-    stomps[3]->toggle();
+    stomps[5]->toggle();
     CHECK (processor.getParameters().getRawParameterValue (ParamIDs::limitOn)->load() > 0.5f);
 }

@@ -144,3 +144,11 @@ TEST_CASE ("Supports mono and stereo tracks", "[processor]")
     CHECK (supports (Set::stereo(), Set::stereo()));
     CHECK_FALSE (supports (Set::create5point1(), Set::stereo()));
 }
+
+TEST_CASE ("The processor is small enough to hold several on Windows' stack", "[processor]")
+{
+    // 0.22.0: with MARS's two engines it passed 300 KB, and a test holding
+    // four at once crashed on Windows, whose stack is 1 MB. The big engines
+    // (ECHELON, DOMINION, MARS, ORACLE's timeline) now live on the heap.
+    CHECK (sizeof (ParagonX1AudioProcessor) < 100 * 1024);
+}

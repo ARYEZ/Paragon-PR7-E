@@ -347,7 +347,7 @@ TEST_CASE ("Compressor in PR7-X: its rack unit (row 3) switches it, and opens it
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    REQUIRE (stomps.size() == 6);   // the rack units' POWER switches, in the chain's order
     CHECK_FALSE (stomps[2]->isPlaceholder());
     stomps[2]->toggle();
     CHECK (processor.getParameters().getRawParameterValue (ParamIDs::compOn)->load() > 0.5f);

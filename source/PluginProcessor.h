@@ -13,8 +13,11 @@
 #include "rigs/CompPresets.h"
 #include "rigs/DominionPresets.h"
 #include "rigs/LimiterPresets.h"
+#include "rigs/MarsPresets.h"
 #include "dsp/effects/Compressor.h"
 #include "dsp/effects/MasterLimiter.h"
+#include "dsp/effects/Mars.h"
+#include "dsp/effects/StereoTools.h"
 #include "dsp/eq/EqMatchSession.h"
 #include "dsp/eq/ParametricEq.h"
 #include "dsp/effects/Presence.h"
@@ -187,6 +190,13 @@ public:
     bool isLimiterPresetModified() { return ! LimiterPresets::matches (limiterPreset, parameters); }
     void rememberLimiterPreset (const LimiterPreset& preset) { limiterPreset = preset; }
 
+    // MARS's own presets (0.22.0), as COMP's.
+    MarsPresets& getMarsPresets() noexcept { return marsPresets; }
+    void loadMarsPreset (const MarsPreset& preset) { MarsPresets::apply (preset, parameters); marsPreset = preset; }
+    juce::String getMarsPresetName() const { return marsPreset.name; }
+    bool isMarsPresetModified() { return ! MarsPresets::matches (marsPreset, parameters); }
+    void rememberMarsPreset (const MarsPreset& preset) { marsPreset = preset; }
+
     // COMP's bands as set now (any thread), and each band now (the page's
     // meters). Look-ahead's delay is reported to the DAW from the timer.
     effects::multiband::Settings getMultibandSettings() const noexcept;
@@ -200,6 +210,21 @@ public:
     float getLimiterReductionDb (int channel) const noexcept { return limiter.getReductionDb (channel); }
     effects::MasterLimiter& getLimiter() noexcept { return limiter; }
     effects::MasterLimiter::Settings getLimiterSettings() const;
+    // MARS (0.22.0): its settings from the parameters, and how hard a band
+    // is driven (the louder side's, 0 to 1+), for its rack unit and page.
+    effects::Mars::Settings getMarsSettings() const;
+    float getMarsDrive (int band) const noexcept { return juce::jmax (mars[0].getBandDrive (band), mars[1].getBandDrive (band)); }
+    // STEREO (0.22.0): its settings, and the correlation of left and right
+    // after it (+1 mono, 0 unrelated, -1 out of phase; ~300 ms average).
+    effects::StereoTools::Settings getStereoSettings() const;
+    float getStereoCorrelation() const noexcept { return stereoCorrelation.load(); }
+    // Left and right after BINARY, for its page's scope: the newest `count`
+    // of each, in step. False until there's enough.
+    bool readImage (float* left, float* right, int count) const noexcept
+    {
+        const auto end = juce::jmin (imageLeft.getTotalWritten(), imageRight.getTotalWritten());
+        return imageLeft.readAt (end - count, left, count) && imageRight.readAt (end - count, right, count);
+    }
     void resetTuner() noexcept { tuner.clear(); }
     void updateTuner();   // the timer calls this; tests call it to step the tuner
 
@@ -261,13 +286,18 @@ private:
     // The tuner only listens; the other stomps aren't built yet.
     // Stomp 4, the EQ (stereo itself), then PRESENCE: one per channel,
     // since each keeps its filter's memory.
-    eq::ParametricEq parametricEq;
+    // The biggest engines live on the heap (0.22.0): a processor held on the
+    // stack (as the tests hold them) would otherwise pass 300 KB, and a few
+    // at once overflowed Windows' 1 MB stack. Each reference is its engine.
+    std::unique_ptr<eq::ParametricEq> parametricEqHeld = std::make_unique<eq::ParametricEq>();
+    eq::ParametricEq& parametricEq = *parametricEqHeld;
     struct EqBandParameters { std::atomic<float>* values[std::size (ParamIDs::eqBandSettings)] {}; };
     std::array<EqBandParameters, ParamIDs::eqNumBands> eqBandParameters {};
     std::atomic<int> eqSoloBand { -1 };
     InputTap eqInputTap { 16384 }, eqOutputTap { 16384 };   // what goes into and comes out of the EQ, for its analyser
     eq::match::Session eqMatch { {} };
-    dominion::Processor dominionProcessor;   // stomp 5
+    std::unique_ptr<dominion::Processor> dominionHeld = std::make_unique<dominion::Processor>();
+    dominion::Processor& dominionProcessor = *dominionHeld;   // stomp 5
     struct DominionBandParameters { std::atomic<float>* values[std::size (ParamIDs::domBandSettings)] {}; };
     std::array<DominionBandParameters, ParamIDs::domNumBands> dominionBandParameters {};
     std::atomic<int> dominionListen { -1 };
@@ -277,12 +307,24 @@ private:
     CompPreset compPreset = CompPresets::factory().front();
     LimiterPresets limiterPresets { {} };
     LimiterPreset limiterPreset = LimiterPresets::factory().front();
+    MarsPresets marsPresets { {} };
+    MarsPreset marsPreset = MarsPresets::factory().front();
     effects::Compressor compressor;   // stomp 2, ported from PR7-C
     effects::multiband::Processor multiband;   // stomp 2's bands, before it
     struct MultibandBandParameters { std::atomic<float>* values[std::size (ParamIDs::mbBandSettings)] {}; };
     std::array<MultibandBandParameters, ParamIDs::mbNumBands> multibandBandParameters {};
     std::atomic<int> multibandSolo { -1 };
     juce::AudioBuffer<float> compSidechain;   // what it listens to: the audio itself
+    // MARS: PR7-V's saturation, which is mono, so one per side: left and
+    // right stay apart (each side's DYNAMICS follows its own level).
+    std::unique_ptr<std::array<effects::Mars, effects::maxChannels>> marsHeld = std::make_unique<std::array<effects::Mars, effects::maxChannels>>();
+    std::array<effects::Mars, effects::maxChannels>& mars = *marsHeld;
+    std::array<std::array<std::atomic<float>*, 12>, effects::Mars::maxBands> marsBandParameters {};   // by ParamIDs::marsBandParts
+    effects::StereoTools stereoTools;   // STEREO: PR7-C's mono maker and width
+    std::atomic<float> stereoCorrelation { 1.0f };
+    InputTap imageLeft, imageRight;   // after BINARY, for its scope
+    double correlationLR = 0.0, correlationLL = 0.0, correlationRR = 0.0, correlationCoefficient = 0.0;
+    juce::SmoothedValue<float> listenMonoAmount;   // STEREO's MONO listening, faded
     effects::MasterLimiter limiter;   // stomp 7 (with its OUTPUT TRIM)   // EQ Match's listening (its folder is set with the rigs folder)
     std::array<effects::Presence, effects::maxChannels> presence;
 
@@ -312,7 +354,8 @@ private:
         double ppq = 0.0, bpm = 120.0;
         int numerator = 4, denominator = 4;
     } hostPosition;
-    oracle::Timeline oracleTimeline;
+    std::unique_ptr<oracle::Timeline> oracleTimelineHeld = std::make_unique<oracle::Timeline>();
+    oracle::Timeline& oracleTimeline = *oracleTimelineHeld;
     oracle::Transcriber oracle;
 
     UndoHistory<Snapshot> history;

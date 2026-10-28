@@ -9,6 +9,8 @@
 #include "ui/OraclePage.h"
 #include "ui/CompPage.h"
 #include "ui/LimiterPage.h"
+#include "ui/MarsPage.h"
+#include "ui/StereoPage.h"
 #include "ui/Finish.h"
 #include "ui/Footswitch.h"
 #include "ui/RackUnit.h"
@@ -24,6 +26,46 @@ namespace
             if (auto* found = findById (*child, id))
                 return found;
         return nullptr;
+    }
+
+    // A drum loop over a stereo noise bed (each side its own noise, so the
+    // image is wide), `blocks` of 256 samples through the processor;
+    // `every` runs after each block (for refreshing pages).
+    void playStereoDrums (ParagonX1AudioProcessor& processor, int blocks, const std::function<void (int block)>& every = {})
+    {
+        juce::Random random (9), other (17);
+        double b[2][3] {};
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (int block = 0, n = 0; block < blocks; ++block)
+        {
+            for (int i = 0; i < 256; ++i, ++n)
+            {
+                const auto t = n / 48000.0;
+                const auto beat = std::fmod (t, 0.5), half = std::fmod (t + 0.25, 1.0);
+                const auto kick = 0.5 * std::exp (-beat * 14.0) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 + 60.0 * std::exp (-beat * 40.0)) * beat);
+                const auto hit = random.nextFloat() * 2.0 - 1.0;
+                const auto snare = half < 0.2 ? 0.35 * std::exp (-half * 22.0) * hit : 0.0;
+                for (int c = 0; c < 2; ++c)
+                {
+                    const auto white = (c == 0 ? random : other).nextFloat() * 2.0 - 1.0;
+                    b[c][0] = 0.99765 * b[c][0] + white * 0.0990460;
+                    b[c][1] = 0.96300 * b[c][1] + white * 0.2965164;
+                    b[c][2] = 0.57000 * b[c][2] + white * 1.0526913;
+                    const auto bed = 0.1 * (b[c][0] + b[c][1] + b[c][2] + white * 0.1848);
+                    buffer.setSample (c, i, (float) (kick + snare * (c == 0 ? 1.0 : 0.8) + bed));
+                }
+            }
+            processor.processBlock (buffer, midi);
+            if (every)
+                every (block);
+        }
+    }
+
+    void setParameter (ParagonX1AudioProcessor& processor, const juce::String& id, float value)
+    {
+        auto* p = processor.getParameters().getParameter (id);
+        p->setValueNotifyingHost (p->convertTo0to1 (value));
     }
 }
 
@@ -219,34 +261,22 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
         set (ParamIDs::limitMode, 8.0f);   // Modern
         set (ParamIDs::limitTruePeak, 1.0f);
         set (ParamIDs::limitGain, 8.0f);
-        juce::Random random (9);
-        double b[3] {};
-        juce::AudioBuffer<float> buffer (2, 256);
-        juce::MidiBuffer midi;
-        for (int block = 0, n = 0; block < 1500; ++block)
+        // 0.22.0: MARS (Three-Band Master) and BINARY (mono below 120 Hz, 120% wide) too.
+        for (const auto& preset : MarsPresets::factory())
+            if (preset.name == "Three-Band Master")
+                processor.loadMarsPreset (preset);
+        set (ParamIDs::marsOn, 1.0f);
+        set (ParamIDs::stereoOn, 1.0f);
+        set (ParamIDs::stereoMonoFreq, 120.0f);
+        set (ParamIDs::stereoWidth, 120.0f);
+        playStereoDrums (processor, 1500, [] (int block)
         {
-            for (int i = 0; i < 256; ++i, ++n)
-            {
-                const auto white = random.nextFloat() * 2.0 - 1.0;
-                b[0] = 0.99765 * b[0] + white * 0.0990460;
-                b[1] = 0.96300 * b[1] + white * 0.2965164;
-                b[2] = 0.57000 * b[2] + white * 1.0526913;
-                const auto t = n / 48000.0;
-                const auto beat = std::fmod (t, 0.5), half = std::fmod (t + 0.25, 1.0);
-                const auto kick = 0.5 * std::exp (-beat * 14.0) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 + 60.0 * std::exp (-beat * 40.0)) * beat);
-                const auto snare = half < 0.2 ? 0.35 * std::exp (-half * 22.0) * white : 0.0;
-                const auto bed = 0.08 * (b[0] + b[1] + b[2] + white * 0.1848);
-                const auto x = kick + snare + bed;
-                buffer.setSample (0, i, (float) x);
-                buffer.setSample (1, i, (float) (x * 0.9));
-            }
-            processor.processBlock (buffer, midi);
             if (block > 1400 && block % 10 == 0)   // the timers (30 Hz) fire only when they're due
             {
                 juce::Thread::sleep (35);
                 juce::Timer::callPendingTimersSynchronously();
             }
-        }
+        });
     }
     if (showPresets)
         if (auto* tab = dynamic_cast<juce::Button*> (findById (*editor, "presetsTab")))
@@ -266,7 +296,7 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (racks.size() == 4);
+        REQUIRE (racks.size() == 6);
         racks[0]->getEdit().onClick();
     }
     if (auto* display = findType<EqDisplay> (*editor))
@@ -296,7 +326,7 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (racks.size() == 4);
+        REQUIRE (racks.size() == 6);
         racks[1]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DOMINION", {}) == "1")
             if (auto* display = findType<DominionDisplay> (*editor))
@@ -355,7 +385,7 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (racks.size() == 4);
+        REQUIRE (racks.size() == 6);
         racks[2]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_COMP", {}) == "1")
             if (auto* page = findType<CompPage> (*editor))
@@ -424,8 +454,8 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 collect (*child);
         };
         collect (*editor);
-        REQUIRE (racks.size() == 4);
-        racks[3]->getEdit().onClick();
+        REQUIRE (racks.size() == 6);
+        racks[5]->getEdit().onClick();
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LIMITER", {}) == "1")
             if (auto* page = findType<LimiterPage> (*editor))
             {
@@ -470,6 +500,59 @@ TEST_CASE ("Render the editor to a PNG", "[.][snapshot]")
                 page->getDisplay().refresh();
                 page->refresh();
             }
+    }
+
+    // PARAGON_SNAPSHOT_PAGE=mars or =stereo (BINARY) opens that unit's page
+    // from its EDIT. PARAGON_SNAPSHOT_MARS=1: MARS on with its "Three-Band
+    // Master" preset (or PARAGON_SNAPSHOT_MARS_PRESET=name), band 2 picked;
+    // PARAGON_SNAPSHOT_STEREO=1: BINARY on, mono below 120 Hz, 130% wide.
+    // Either way a stereo drum loop plays through it.
+    if (const auto pageName = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PAGE", {}); pageName == "mars" || pageName == "stereo")
+    {
+        std::vector<RackUnit*> racks;
+        std::function<void (juce::Component&)> collect = [&] (juce::Component& c)
+        {
+            if (auto* rack = dynamic_cast<RackUnit*> (&c))
+                racks.push_back (rack);
+            for (auto* child : c.getChildren())
+                collect (*child);
+        };
+        collect (*editor);
+        REQUIRE (racks.size() == 6);
+        processor.setPlayConfigDetails (2, 2, 48000.0, 256);
+        processor.prepareToPlay (48000.0, 256);
+        if (pageName == "mars")
+        {
+            racks[3]->getEdit().onClick();
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MARS", {}) == "1")
+            {
+                const auto wanted = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_MARS_PRESET", "Three-Band Master");
+                for (const auto& preset : MarsPresets::factory())
+                    if (preset.name == wanted)
+                        processor.loadMarsPreset (preset);
+                setParameter (processor, ParamIDs::marsOn, 1.0f);
+                if (auto* page = findType<MarsPage> (*editor))
+                    page->selectBand (1);
+            }
+        }
+        else
+        {
+            racks[4]->getEdit().onClick();
+            if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STEREO", {}) == "1")
+            {
+                setParameter (processor, ParamIDs::stereoOn, 1.0f);
+                setParameter (processor, ParamIDs::stereoMonoFreq, 120.0f);
+                setParameter (processor, ParamIDs::stereoWidth, 130.0f);
+            }
+        }
+        playStereoDrums (processor, 1500, [] (int block)
+        {
+            if (block > 1400 && block % 10 == 0)
+            {
+                juce::Thread::sleep (35);
+                juce::Timer::callPendingTimersSynchronously();
+            }
+        });
     }
 
     // PARAGON_SNAPSHOT_PAGE=oracle opens ORACLE's page (stomp 1's name).

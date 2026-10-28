@@ -38,12 +38,16 @@ ParagonX1AudioProcessor::ParagonX1AudioProcessor()
     for (int band = 0; band < ParamIDs::mbNumBands; ++band)
         for (size_t i = 0; i < std::size (ParamIDs::mbBandSettings); ++i)
             multibandBandParameters[(size_t) band].values[i] = parameters.getRawParameterValue (ParamIDs::mbBand (band, ParamIDs::mbBandSettings[i]));
+    for (int band = 0; band < effects::Mars::maxBands; ++band)
+        for (int i = 0; i < ParamIDs::marsBandParts.size(); ++i)
+            marsBandParameters[(size_t) band][(size_t) i] = parameters.getRawParameterValue (ParamIDs::marsBand (band, ParamIDs::marsBandParts[i]));
 
     rigLibrary = std::make_unique<RigLibrary>();
     eqMatch.setReferencesFolder (rigLibrary->getFolder().getChildFile ("Match References"));
     dominionPresets.setFolder (rigLibrary->getFolder().getChildFile ("Dominion Presets"));
     compPresets.setFolder (rigLibrary->getFolder().getChildFile ("Comp Presets"));
     limiterPresets.setFolder (rigLibrary->getFolder().getChildFile ("Limiter Presets"));
+    marsPresets.setFolder (rigLibrary->getFolder().getChildFile ("Mars Presets"));
 
     // Any change to a parameter that rigs store marks the rig as modified,
     // and finishing an edit to one records an undo step.
@@ -94,6 +98,13 @@ void ParagonX1AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     multiband.prepare (sampleRate, preparedBlockSize);
     compSidechain.setSize (2, preparedBlockSize);
     limiter.prepare (sampleRate, preparedBlockSize);
+    for (auto& side : mars)
+        side.prepare (sampleRate, preparedBlockSize);
+    stereoTools.prepare (sampleRate, preparedBlockSize);
+    correlationLR = correlationLL = correlationRR = 0.0;
+    correlationCoefficient = 1.0 - std::exp (-1.0 / (0.3 * sampleRate));
+    listenMonoAmount.reset (sampleRate, gainRampSeconds);
+    listenMonoAmount.setCurrentAndTargetValue (isOn (ParamIDs::stereoListenMono) ? 1.0f : 0.0f);
     eqInputTap.setSampleRate (sampleRate);
     eqOutputTap.setSampleRate (sampleRate);
     for (auto& shelf : presence)
@@ -126,6 +137,47 @@ effects::MasterLimiter::Settings ParagonX1AudioProcessor::getLimiterSettings() c
     s.mix = param (ParamIDs::limitMix) / 100.0f;
     s.link = isOn (ParamIDs::limitLink);
     return s;
+}
+
+effects::Mars::Settings ParagonX1AudioProcessor::getMarsSettings() const
+{
+    using Mars = effects::Mars;
+    Mars::Settings s;
+    s.on = isOn (ParamIDs::marsOn);
+    s.numBands = juce::jlimit (1, Mars::maxBands, juce::roundToInt (param (ParamIDs::marsBands)) + 1);
+    s.crossoverHz = { param (ParamIDs::marsCross1), param (ParamIDs::marsCross2), param (ParamIDs::marsCross3) };
+    s.slope = (Mars::Slope) juce::jlimit (0, Mars::slopeNames.size() - 1, juce::roundToInt (param (ParamIDs::marsSlope)));
+    s.inputDb = param (ParamIDs::marsInput);
+    s.outputDb = param (ParamIDs::marsOutput);
+    s.mix = param (ParamIDs::marsMix);
+    s.quality = (Mars::Quality) juce::jlimit (0, Mars::qualityNames.size() - 1, juce::roundToInt (param (ParamIDs::marsQuality)));
+    for (int b = 0; b < Mars::maxBands; ++b)
+    {
+        auto& band = s.bands[(size_t) b];
+        // In ParamIDs::marsBandParts' order (read through pointers: no strings on the audio thread).
+        const auto& values = marsBandParameters[(size_t) b];
+        const auto value = [&values] (size_t part) { return values[part]->load(); };
+        band.on = value (0) > 0.5f;
+        band.style = (Mars::Style) juce::jlimit (0, Mars::numStyles - 1, juce::roundToInt (value (1)));
+        band.drive = value (2);
+        band.dynamics = value (3);
+        band.feedback = value (4);
+        band.feedbackHz = value (5);
+        band.bassDb = value (6);
+        band.midDb = value (7);
+        band.trebleDb = value (8);
+        band.presenceDb = value (9);
+        band.mix = value (10);
+        band.levelDb = value (11);
+    }
+    return s;
+}
+
+effects::StereoTools::Settings ParagonX1AudioProcessor::getStereoSettings() const
+{
+    const auto on = isOn (ParamIDs::stereoOn);
+    return { on && isOn (ParamIDs::stereoMonoOn), param (ParamIDs::stereoMonoFreq),
+             on && isOn (ParamIDs::stereoWidthOn), param (ParamIDs::stereoWidth) / 100.0f };
 }
 
 void ParagonX1AudioProcessor::updateLatency()
@@ -429,6 +481,45 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, in
     for (size_t channel = 0; channel < block.getNumChannels(); ++channel)
         presence[channel].process (block.getSingleChannelBlock (channel), param (ParamIDs::presence));
 
+    // MARS (0.22.0), after CONSTRICTOR: one engine per side. It runs no
+    // look-ahead (IIR oversampling), so it adds no latency.
+    {
+        const auto marsSettings = getMarsSettings();
+        for (size_t channel = 0; channel < block.getNumChannels(); ++channel)
+            mars[channel].process (block.getSingleChannelBlock (channel), marsSettings);
+    }
+
+    // STEREO (0.22.0), after MARS (so the mono maker also gathers what MARS
+    // added in the lows), then its correlation meter, which reads whether
+    // STEREO is on or not.
+    if (numOutputChannels > 1)
+    {
+        float* channels[effects::maxChannels] { block.getChannelPointer (0), block.getChannelPointer (1) };
+        juce::AudioBuffer<float> audio (channels, 2, numSamples);
+        stereoTools.process (audio, numSamples, getStereoSettings());
+
+        const auto* left = channels[0];
+        const auto* right = channels[1];
+        imageLeft.write (left, numSamples);
+        imageRight.write (right, numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto l = (double) left[i], r = (double) right[i];
+            correlationLR += (l * r - correlationLR) * correlationCoefficient;
+            correlationLL += (l * l - correlationLL) * correlationCoefficient;
+            correlationRR += (r * r - correlationRR) * correlationCoefficient;
+        }
+        if (correlationLL < 1.0e-14) correlationLL = 0.0;   // no denormals in silence
+        if (correlationRR < 1.0e-14) correlationRR = 0.0;
+        const auto power = std::sqrt (correlationLL * correlationRR);
+        // Silence, or one side silent: nothing to compare; read as mono.
+        stereoCorrelation = power > 1.0e-10 ? (float) juce::jlimit (-1.0, 1.0, correlationLR / power) : 1.0f;
+    }
+    else
+    {
+        stereoCorrelation = 1.0f;
+    }
+
     // The master OUTPUT knob plus the rig's own RIG LEVEL. (The expression
     // pedal's VOLUME came before 0.12.0, when the pedal went: its parameters
     // are still read from old projects and rigs, but do nothing.)
@@ -458,6 +549,22 @@ void ParagonX1AudioProcessor::processChunk (juce::AudioBuffer<float>& buffer, in
                 auto& sample = block.getChannelPointer (channel)[i];
                 sample += (bypassDry.getSample ((int) channel, i) - sample) * amount;
             }
+        }
+    }
+
+    // STEREO's MONO: listening to the result folded to mono (both sides
+    // their average), last so it hears BYPASS too. Not saved in rigs.
+    listenMonoAmount.setTargetValue (isOn (ParamIDs::stereoListenMono) ? 1.0f : 0.0f);
+    if (numOutputChannels > 1 && (listenMonoAmount.isSmoothing() || listenMonoAmount.getTargetValue() > 0.5f))
+    {
+        auto* left = block.getChannelPointer (0);
+        auto* right = block.getChannelPointer (1);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto amount = listenMonoAmount.getNextValue() * 0.5f;
+            const auto difference = (left[i] - right[i]) * amount;
+            left[i] -= difference;
+            right[i] += difference;
         }
     }
 
@@ -581,6 +688,7 @@ void ParagonX1AudioProcessor::useRigFolder (const juce::File& folder)
     dominionPresets.setFolder (folder.getChildFile ("Dominion Presets"));
     compPresets.setFolder (folder.getChildFile ("Comp Presets"));
     limiterPresets.setFolder (folder.getChildFile ("Limiter Presets"));
+    marsPresets.setFolder (folder.getChildFile ("Mars Presets"));
     rigBroadcaster.sendChangeMessage();
 }
 
