@@ -259,7 +259,7 @@ TEST_CASE ("Limiter in PR7-E: off by default, leaving the sound alone; a mono tr
         REQUIRE_THAT (buffer.getSample (1, i), WithinAbs (buffer.getSample (0, i), 1.0e-7));
 }
 
-TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", "[limit][rigs]")
+TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold their ceiling (-1 dB, or their own target's)", "[limit][rigs]")
 {
     for (const auto& rig : makeFactoryRigs())
     {
@@ -274,7 +274,10 @@ TEST_CASE ("Limiter in PR7-E: the mastering factory rigs hold a -1 dB ceiling", 
         processor.loadRig (*entry);
         auto hits = drumHits (96000);
         process (processor, hits);
-        CHECK (peakDb (hits) <= -1.0f + 0.001f);
+        // -1 dB unless a LIMITER preset sets its own (0.19.0: CD and club -0.3, vinyl -3, US broadcast -2).
+        const auto ceiling = rig.parameters.count (ParamIDs::limitCeiling) > 0 ? rig.parameters.at (ParamIDs::limitCeiling) : -1.0f;
+        CHECK (ceiling <= -0.3f);
+        CHECK (peakDb (hits) <= ceiling + 0.001f);
     }
 }
 

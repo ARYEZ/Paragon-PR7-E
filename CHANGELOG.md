@@ -2,6 +2,42 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.19.0
+
+- **Many more presets, as you asked:** 169 factory rigs (85 before), 123 CONSTRICTOR presets (62), 80 DOMINION presets (41), and the LIMITER has presets now (27).
+- **Signature sounds,** inspired by the eight records you named. Each is named for the sound, never the artist or record: real names can't go on the plugin.
+
+  | Name on the plugin | Inspired by |
+  |---|---|
+  | Ethereal Djent | Spiritbox, *Eternal Blue* |
+  | Dark Synth Metal | Bad Omens, *The Death of Peace of Mind* |
+  | Raw 90s Nu Metal | Korn, *Korn* (1994) |
+  | Clean Prog Djent | Periphery, *Periphery III: Select Difficulty* |
+  | Cinematic Post-Hardcore | Crown the Empire, *The Resistance: Rise of the Runaways* |
+  | Swedish Melodic Death | Soilwork, *Stabbing the Drama* |
+  | Early 2000s Metalcore | Killswitch Engage, *The End of Heartache* |
+  | Polished Nu Metal | Linkin Park, *Hybrid Theory* |
+
+  - Each sound has six rigs, like the genres: vocal A31 to A38, drums B31 to B38, guitars C31 to C38, bass C41 to C48, mix D31 to D38, master E31 to E38.
+  - Each also has CONSTRICTOR, DOMINION and LIMITER presets of the same name, under SIGNATURE SOUNDS in their PRESET menus, so you can use one part on a track without loading the whole rig.
+  - **What they're based on:** what's published about how each record was made and how it sounds. For example: very low seven-strings in drop F# (Ethereal Djent); a slap bass's click (Raw 90s Nu Metal); live drums tightly gated with no samples (Clean Prog Djent); an orchestra as loud as the band (Cinematic Post-Hardcore); a clicky kick and mid-forward guitars (Swedish Melodic Death).
+  - **How loud each master is:** from the record's measured dynamic range (the DR database), from very loud (DR 4, Dark Synth Metal) to open (DR 8, Raw 90s Nu Metal).
+  - **Where they're guesses:** sources were thin for Crown the Empire (no loudness figure, no gear details) and for some tunings, so those parts are guesses. None of this was tuned by ear; they're starting points that get you close, not copies.
+- **More starting points:**
+  - **Per source (x51 on):** scream vocal, breathy pop vocal, choir and group vocals, podcast voice; toms, room mics, snare bottom, electronic drums; high-gain rhythm, lead and clean guitar, distorted bass, synth lead, strings and orchestra, organ and electric piano.
+  - **Fixes (x71 on), one job each:** thin, nasal or harsh vocal; boxy snare, ringing toms, cymbal wash; honky guitar, guitar fizz, muddy bass; boomy, honky or sibilant mix.
+  - **Mastering targets (E51 on):** streaming, loud club, CD, hi-res, gentle and dynamic, vinyl, podcast, and broadcast (EBU R128 and the US A/85).
+  - **New CONSTRICTOR and DOMINION presets** for each of these, e.g. Rap Vocal Tight, Scream Control, Toms Punch, Room Crush, 808 Steady, De-Ess, Honk Control, Cymbal Wash.
+- **LIMITER presets:** a PRESET button on its page, and its rack unit's small screen shows the preset (STYLE is on its main screen).
+  - **Mastering:** streaming -14 LUFS, loud club -9, CD 16-bit (dithered), hi-res 24-bit, gentle and dynamic, vinyl safe, podcast -16, broadcast -23 and -24.
+  - **Mix bus:** safety net, glue, punchy, transparent loud.
+  - **Tracks:** vocal peak catcher, drum bus smash, drum transients kept, bass steady, 808 clip and catch.
+  - **The signature sounds' masters.**
+  - **Loudness targets:** a mastering preset also sets the page's loudness TARGET. Turn GAIN until INTEGRATED reaches it: how loud a preset makes your mix depends on how loud the mix already is.
+  - **Your own:** saved like CONSTRICTOR's.
+- **Tidier menus:** CONSTRICTOR's and DOMINION's PRESET menus would now be taller than most screens. Their plain categories (Vocals, Drums, Instruments, Mix & Master, Fixes, Creative) are now submenus under STARTING POINTS, as the genres are.
+- Your saved rigs and presets are untouched. Nothing about the sound of existing rigs changed, apart from their notes (COMP now reads CONSTRICTOR).
+
 ## 0.18.1
 
 - **The LIMITER is cleaner on bass.** You said it still didn't sound right, so I measured it the way a mastering engineer would, and found a real fault in my design:

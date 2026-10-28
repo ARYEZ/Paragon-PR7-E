@@ -43,6 +43,7 @@ ParagonX1AudioProcessor::ParagonX1AudioProcessor()
     eqMatch.setReferencesFolder (rigLibrary->getFolder().getChildFile ("Match References"));
     dominionPresets.setFolder (rigLibrary->getFolder().getChildFile ("Dominion Presets"));
     compPresets.setFolder (rigLibrary->getFolder().getChildFile ("Comp Presets"));
+    limiterPresets.setFolder (rigLibrary->getFolder().getChildFile ("Limiter Presets"));
 
     // Any change to a parameter that rigs store marks the rig as modified,
     // and finishing an edit to one records an undo step.
@@ -248,6 +249,14 @@ dominion::Settings ParagonX1AudioProcessor::getDominionSettings() const noexcept
     }
     s.listenBand = dominionListen.load();
     return s;
+}
+
+void ParagonX1AudioProcessor::loadLimiterPreset (const LimiterPreset& preset)
+{
+    LimiterPresets::apply (preset, parameters);
+    if (const auto target = preset.parameters.find (LimiterPresetTraits::targetKey); target != preset.parameters.end())
+        parameters.state.setProperty (LimiterPresetTraits::targetKey, target->second, nullptr);
+    limiterPreset = preset;
 }
 
 void ParagonX1AudioProcessor::loadDominionPreset (const DominionPreset& preset)
@@ -571,6 +580,7 @@ void ParagonX1AudioProcessor::useRigFolder (const juce::File& folder)
     eqMatch.setReferencesFolder (folder.getChildFile ("Match References"));
     dominionPresets.setFolder (folder.getChildFile ("Dominion Presets"));
     compPresets.setFolder (folder.getChildFile ("Comp Presets"));
+    limiterPresets.setFolder (folder.getChildFile ("Limiter Presets"));
     rigBroadcaster.sendChangeMessage();
 }
 

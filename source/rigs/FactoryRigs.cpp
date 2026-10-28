@@ -2,6 +2,7 @@
 
 #include "CompPresets.h"
 #include "DominionPresets.h"
+#include "LimiterPresets.h"
 #include "Parameters.h"
 #include "dsp/dominion/Dominion.h"
 #include "dsp/effects/MasterLimiter.h"
@@ -122,40 +123,66 @@ namespace
             if (preset.name == name)
             {
                 for (const auto& [id, value] : preset.parameters)
-                    rig.parameters[id] = value;
+                    if (juce::String (id) != LimiterPresetTraits::targetKey)   // the LIMITER page's TARGET: not a parameter
+                        rig.parameters[id] = value;
                 rig.parameters[onId] = 1.0f;
                 return;
             }
         jassertfalse;   // a genre rig names a preset that isn't there
     }
 
-    void addGenre (std::vector<Rig>& rigs, int index, const juce::String& genre, const GenrePart& vocal, const GenrePart& drumBus,
-                   const GenrePart& guitars, const GenrePart& bass, const GenrePart& mixBus, const GenrePart& master)
+    // A set of six rigs, one for each part of a song: a genre's (0.15.0, at
+    // x11 to x19, bass C21 to C29) or a signature sound's (0.19.0, at x31 to
+    // x38, bass C41 to C48, with a LIMITER preset on the master too).
+    struct SetKind { const char* group; const char* tag; int first, bassFirst; bool limiter; };
+    const SetKind genreSet { "Genres", "Genre", 11, 21, false }, signatureSet { "Signature Sounds", "Signature", 31, 41, true };
+
+    void addSet (std::vector<Rig>& rigs, const SetKind& kind, int index, const juce::String& name, const GenrePart& vocal, const GenrePart& drumBus,
+                 const GenrePart& guitars, const GenrePart& bass, const GenrePart& mixBus, const GenrePart& master)
     {
-        struct Part { const GenrePart& spec; const char* name; int bank, first; const char* tag; const char* comp; const char* dominion; };
+        struct Part { const GenrePart& spec; const char* name; int bank; bool isBass; const char* tag; const char* comp; const char* dominion; };
         const Part parts[] = {
-            { vocal,   "Vocal",   vocals,      11, "Vocal",     "Vocal",   "Vocal" },
-            { drumBus, "Drums",   drums,       11, "Drums",     "Drums",   nullptr },
-            { guitars, "Guitars", instruments, 11, "Guitar",    nullptr,   "Guitars" },
-            { bass,    "Bass",    instruments, 21, "Bass",      "Bass",    nullptr },
-            { mixBus,  "Mix",     mix,         11, "Mix",       "Mix Bus", "Mix" },
-            { master,  "Master",  mastering,   11, "Mastering", "Master",  nullptr },
+            { vocal,   "Vocal",   vocals,      false, "Vocal",     "Vocal",   "Vocal" },
+            { drumBus, "Drums",   drums,       false, "Drums",     "Drums",   nullptr },
+            { guitars, "Guitars", instruments, false, "Guitar",    nullptr,   "Guitars" },
+            { bass,    "Bass",    instruments, true,  "Bass",      "Bass",    nullptr },
+            { mixBus,  "Mix",     mix,         false, "Mix",       "Mix Bus", "Mix" },
+            { master,  "Master",  mastering,   false, "Mastering", "Master",  nullptr },
         };
         for (const auto& part : parts)
         {
-            auto rig = makeRig (genre + " " + part.name, part.bank, part.first + index, { genre, part.tag, "Genre" }, part.spec.notes, part.spec.bands);
+            auto rig = makeRig (name + " " + part.name, part.bank, (part.isBass ? kind.bassFirst : kind.first) + index, { name, part.tag, kind.tag },
+                                part.spec.notes, part.spec.bands);
             if (part.comp != nullptr)
             {
-                applyPreset (rig, CompPresets::factory(), genre + " " + part.comp, ParamIDs::compOn);
-                rig.notes << " COMP: its \"" << genre << " " << part.comp << "\" preset.";
+                applyPreset (rig, CompPresets::factory(), name + " " + part.comp, ParamIDs::compOn);
+                rig.notes << " CONSTRICTOR: its \"" << name << " " << part.comp << "\" preset.";
             }
             if (part.dominion != nullptr)
             {
-                applyPreset (rig, DominionPresets::factory(), genre + " " + part.dominion, ParamIDs::domOn);
-                rig.notes << " DOMINION: its \"" << genre << " " << part.dominion << "\" preset.";
+                applyPreset (rig, DominionPresets::factory(), name + " " + part.dominion, ParamIDs::domOn);
+                rig.notes << " DOMINION: its \"" << name << " " << part.dominion << "\" preset.";
+            }
+            if (kind.limiter && part.bank == mastering)
+            {
+                applyPreset (rig, LimiterPresets::factory(), name + " Master", ParamIDs::limitOn);
+                rig.notes << " LIMITER: its \"" << name << " Master\" preset (GAIN set for a mix peaking around -6 dBFS: "
+                             "turn it to taste).";
             }
             rigs.push_back (std::move (rig));
         }
+    }
+
+    void addGenre (std::vector<Rig>& rigs, int index, const juce::String& genre, const GenrePart& vocal, const GenrePart& drumBus,
+                   const GenrePart& guitars, const GenrePart& bass, const GenrePart& mixBus, const GenrePart& master)
+    {
+        addSet (rigs, genreSet, index, genre, vocal, drumBus, guitars, bass, mixBus, master);
+    }
+
+    void addSignature (std::vector<Rig>& rigs, const juce::String& sound, const GenrePart& vocal, const GenrePart& drumBus,
+                       const GenrePart& guitars, const GenrePart& bass, const GenrePart& mixBus, const GenrePart& master)
+    {
+        addSet (rigs, signatureSet, signatureSounds.indexOf (sound), sound, vocal, drumBus, guitars, bass, mixBus, master);
     }
 }
 
@@ -454,6 +481,315 @@ std::vector<Rig> makeFactoryRigs()
         { "A hard master: a touch of weight, the upper middle a little forward, a touch of air.",
           { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (2000.0, 0.8, 0.7), shelf (S::highShelf, 12000.0, 0.8) } });
 
+    // Signature sounds (0.19.0, the owner's ask): each inspired by how a
+    // particular record sounds, from what's published about its production
+    // (tunings, how it was recorded, how reviewers hear it) and its measured
+    // loudness. Named for the sound, never the artist or record. Our own
+    // reading, not anyone's settings, and not tuned by ear: starting points.
+    addSignature (rigs, "Ethereal Djent",
+        { "Airy, ethereal cleans and harsh screams over very low guitars: boxiness out, a little presence, lots of air, "
+          "sibilance caught.",
+          { cut (S::lowCut, 100.0, 24), bell (300.0, -2.0, 1.0), bell (3000.0, 1.5, 0.9), shelf (S::highShelf, 10000.0, 3.0),
+            dynamic (bell (7000.0, 0.0, 2.5), -6.0) } },
+        { "A modern, tight kit under drop-F# guitars: kick weight at 50 Hz, the box cut, click and air.",
+          { cut (S::lowCut, 28.0, 24), bell (50.0, 2.0, 1.0), bell (400.0, -3.0, 1.0), bell (5000.0, 2.0, 1.0), shelf (S::highShelf, 12000.0, 1.5) } },
+        { "Seven-strings tuned very low (drop F#, about 46 Hz): the low cut lower than usual, the boom caught as it blooms, "
+          "less mud, a little bite, the fizz rolled off.",
+          { cut (S::lowCut, 60.0, 24), dynamic (bell (140.0, 0.0, 1.2), -4.0), bell (400.0, -2.0, 1.0), bell (2500.0, 1.5, 1.0),
+            cut (S::highCut, 9000.0, 18) } },
+        { "Bass under very low guitars: the lowest notes held even, the mud cut, grind at 1.2 kHz so it's heard.",
+          { cut (S::lowCut, 30.0, 24), dynamic (bell (55.0, 0.0, 1.2), -4.0), bell (250.0, -3.0, 1.2), bell (1200.0, 2.0, 1.0),
+            cut (S::highCut, 6000.0, 12) } },
+        { "An open, airy mix (the record measures DR 11 on vinyl): low mids and harshness caught when they build, air on top.",
+          { cut (S::lowCut, 22.0, 12), dynamic (bell (200.0, 0.0, 1.0), -3.0), dynamic (bell (3500.0, 0.0, 1.2), -3.0),
+            shelf (S::highShelf, 12000.0, 2.0) } },
+        { "A master with room to breathe: boomy notes kept in check, a little less low-mid, air.",
+          { cut (S::lowCut, 18.0, 24), dynamic (shelf (S::lowShelf, 90.0, 0.0), -2.0), bell (300.0, -0.8, 0.7),
+            shelf (S::highShelf, 12000.0, 1.5) } });
+
+    addSignature (rigs, "Dark Synth Metal",
+        { "Close, haunting vocals over synths: warm, breathy and present, sibilance caught.",
+          { cut (S::lowCut, 90.0, 24), bell (250.0, -1.5, 1.0), bell (4000.0, 2.0, 0.9), shelf (S::highShelf, 11000.0, 3.0),
+            dynamic (bell (6500.0, 0.0, 2.5), -6.0) } },
+        { "Real drums that sit with electronics: a deep kick at 55 Hz, the box cut, snap at 4 kHz.",
+          { cut (S::lowCut, 30.0, 24), bell (55.0, 2.5, 1.0), bell (350.0, -3.0, 1.0), bell (4000.0, 2.0, 1.0), shelf (S::highShelf, 11000.0, 1.0) } },
+        { "Heavy drop-tuned guitars that sit under the synths: boom caught, mud cut, a darker top so the synths shine.",
+          { cut (S::lowCut, 80.0, 24), dynamic (bell (170.0, 0.0, 1.2), -4.0), bell (500.0, -2.5, 1.0), bell (2000.0, 1.0, 1.0),
+            cut (S::highCut, 8500.0, 18) } },
+        { "Synth bass or bass guitar: the sub held even when it blooms, the mud cut, a little growl at 900 Hz.",
+          { cut (S::lowCut, 28.0, 24), dynamic (bell (90.0, 0.0, 1.0), -3.0), bell (300.0, -3.0, 1.2), bell (900.0, 1.5, 1.0),
+            cut (S::highCut, 5000.0, 12) } },
+        { "A dense, very loud mix (the record measures DR 4): a touch of low weight, low mids and harshness caught as they build.",
+          { cut (S::lowCut, 25.0, 12), shelf (S::lowShelf, 60.0, 1.0), dynamic (bell (250.0, 0.0, 1.0), -3.0), dynamic (bell (3000.0, 0.0, 1.2), -3.0),
+            shelf (S::highShelf, 11000.0, 1.5) } },
+        { "A loud, dark-polished master: a touch of weight, a little less low-mid, a touch of air.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (300.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) } });
+
+    addSignature (rigs, "Raw 90s Nu Metal",
+        { "A raw, unpolished vocal, recorded live in the room: rumble out, presence up, little air.",
+          { cut (S::lowCut, 90.0, 24), bell (400.0, -1.0, 1.0), bell (2500.0, 2.0, 1.0), shelf (S::highShelf, 9000.0, 1.0) } },
+        { "A natural, roomy kit: kick body at 70 Hz, the box cut a little, crack at 5 kHz.",
+          { cut (S::lowCut, 30.0, 24), bell (70.0, 2.0, 1.0), bell (400.0, -2.0, 1.0), bell (5000.0, 1.5, 1.0) } },
+        { "Scooped seven-strings (A standard): the mids dipped wide, the boom caught, a little edge, a dark top.",
+          { cut (S::lowCut, 70.0, 24), dynamic (bell (150.0, 0.0, 1.2), -3.0), bell (600.0, -3.0, 0.8), bell (3000.0, 1.0, 1.0),
+            cut (S::highCut, 8000.0, 18) } },
+        { "A percussive, clicky slap bass: some weight at 80 Hz, less mud, lots of click at 2.5 kHz and snap at 4 kHz.",
+          { cut (S::lowCut, 35.0, 24), bell (80.0, 1.5, 1.0), bell (300.0, -3.0, 1.2), bell (2500.0, 3.0, 1.0), bell (4500.0, 1.5, 1.2),
+            cut (S::highCut, 9000.0, 12) } },
+        { "A raw, open mix (the record measures DR 8): low mids caught when they pile up, a little edge, not much air (it's 90s).",
+          { cut (S::lowCut, 25.0, 12), dynamic (bell (300.0, 0.0, 1.0), -2.5), bell (3000.0, 1.0, 0.8), shelf (S::highShelf, 10000.0, 0.5) } },
+        { "A light master that keeps the room and the dynamics: a little less low-mid, a whisper of air.",
+          { cut (S::lowCut, 20.0, 24), bell (300.0, -0.5, 0.7), shelf (S::highShelf, 12000.0, 0.5) } });
+
+    addSignature (rigs, "Clean Prog Djent",
+        { "A clear, forward vocal over busy guitars: tight low cut, less low-mid, presence at 3.5 kHz, air, sibilance caught.",
+          { cut (S::lowCut, 100.0, 24), bell (350.0, -2.0, 1.0), bell (3500.0, 2.0, 1.0), shelf (S::highShelf, 12000.0, 2.0),
+            dynamic (bell (6500.0, 0.0, 2.5), -6.0) } },
+        { "Live drums, tightly gated and EQ'd (no samples): kick weight at 60 Hz, the box cut hard, crack at 5 kHz, air.",
+          { cut (S::lowCut, 30.0, 24), bell (60.0, 2.0, 1.0), bell (450.0, -3.5, 1.0), bell (5000.0, 2.5, 1.0), shelf (S::highShelf, 12000.0, 1.5) } },
+        { "Tight, clinical modelled guitars: the lows left to the bass, chug boom caught, less mud, a little bite.",
+          { cut (S::lowCut, 100.0, 24), dynamic (bell (200.0, 0.0, 1.2), -4.0), bell (500.0, -2.0, 1.0), bell (3000.0, 1.5, 1.0),
+            cut (S::highCut, 10000.0, 18) } },
+        { "A DI bass with saturation: an even bottom, the mud cut, grind at 1 kHz and clank at 2.5 kHz.",
+          { cut (S::lowCut, 35.0, 24), dynamic (bell (70.0, 0.0, 1.4), -3.0), bell (250.0, -3.0, 1.2), bell (1000.0, 2.0, 1.0),
+            bell (2500.0, 2.0, 1.2), cut (S::highCut, 7000.0, 12) } },
+        { "A clinical mix (the record measures DR 6 on CD): low mids and upper-mid harshness caught as they build, air.",
+          { cut (S::lowCut, 25.0, 12), dynamic (bell (250.0, 0.0, 1.0), -3.0), dynamic (bell (4000.0, 0.0, 1.2), -3.0),
+            shelf (S::highShelf, 12000.0, 1.5) } },
+        { "A tight master: a touch of weight, a little presence and air.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (2000.0, 0.8, 0.7), shelf (S::highShelf, 12000.0, 0.8) } });
+
+    addSignature (rigs, "Cinematic Post-Hardcore",
+        { "Soaring cleans and screams: boxiness out, presence and lots of air, sibilance caught.",
+          { cut (S::lowCut, 120.0, 24), bell (300.0, -2.0, 1.0), bell (3000.0, 2.5, 0.9), shelf (S::highShelf, 10000.0, 3.0),
+            dynamic (bell (7000.0, 0.0, 2.5), -6.0) } },
+        { "A big kit for anthems and breakdowns: deep kick, less box, snap and shimmer.",
+          { cut (S::lowCut, 30.0, 24), bell (55.0, 2.5, 1.0), bell (450.0, -3.0, 1.0), bell (5000.0, 2.5, 0.9), shelf (S::highShelf, 11000.0, 2.0) } },
+        { "Guitars that leave room for choirs, strings and piano: the lows left to the bass, the boom caught, less mud and a "
+          "little less around 1 kHz, some bite.",
+          { cut (S::lowCut, 100.0, 24), dynamic (bell (200.0, 0.0, 1.2), -4.0), bell (500.0, -2.5, 1.0), bell (1000.0, -1.0, 1.0),
+            bell (2500.0, 1.5, 1.0), cut (S::highCut, 10000.0, 18) } },
+        { "Bass for breakdowns under an orchestra: the sub held when it blooms, the mud cut, grind and clank.",
+          { cut (S::lowCut, 30.0, 24), dynamic (shelf (S::lowShelf, 90.0, 0.0), -4.0), bell (300.0, -3.0, 1.2), bell (1000.0, 1.5, 1.0),
+            bell (3000.0, 1.0, 1.2), cut (S::highCut, 7000.0, 12) } },
+        { "A dense mix of band and orchestra: low mids and harshness caught when they build, a little less in the middle, air. "
+          "(No loudness figure was found for this record: a guess.)",
+          { cut (S::lowCut, 25.0, 12), dynamic (bell (300.0, 0.0, 1.0), -3.0), bell (1000.0, -1.0, 0.7), dynamic (bell (3000.0, 0.0, 1.2), -3.0),
+            shelf (S::highShelf, 11000.0, 2.0) } },
+        { "A big, bright master: a touch of weight and air, a little less low-mid.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 0.8), bell (350.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.2) } });
+
+    addSignature (rigs, "Swedish Melodic Death",
+        { "Half clean, half harsh: boxiness out, presence and some air, sibilance caught.",
+          { cut (S::lowCut, 110.0, 24), bell (300.0, -2.0, 1.0), bell (2500.0, 2.0, 0.9), shelf (S::highShelf, 9000.0, 2.0),
+            dynamic (bell (6500.0, 0.0, 2.5), -6.0) } },
+        { "A tight, triggered-sounding kit: kick body at 70 Hz, the box cut, lots of beater click at 4.5 kHz.",
+          { cut (S::lowCut, 30.0, 24), bell (70.0, 2.0, 1.0), bell (400.0, -3.0, 1.0), bell (4500.0, 3.0, 1.0), shelf (S::highShelf, 12000.0, 1.0) } },
+        { "Mid-forward Swedish guitars (B standard): the boom caught, a little less mud, mids and bite kept, the fizz rolled off.",
+          { cut (S::lowCut, 90.0, 24), dynamic (bell (180.0, 0.0, 1.2), -3.0), bell (400.0, -1.5, 1.0), bell (1200.0, 1.0, 1.0),
+            bell (3000.0, 1.0, 1.0), cut (S::highCut, 9500.0, 18) } },
+        { "Bass that's heard under busy guitars: a little weight, less mud, grind at 800 Hz.",
+          { cut (S::lowCut, 35.0, 24), bell (80.0, 1.0, 1.0), bell (250.0, -3.0, 1.2), bell (800.0, 2.0, 1.0), cut (S::highCut, 5000.0, 12) } },
+        { "A polished, loud mix (the record measures DR 5 on CD): low mids and harshness caught as they build, a little air.",
+          { cut (S::lowCut, 25.0, 12), dynamic (bell (250.0, 0.0, 1.0), -3.0), dynamic (bell (3500.0, 0.0, 1.2), -2.5),
+            shelf (S::highShelf, 10000.0, 1.0) } },
+        { "A loud, polished master: a touch of weight and air, a little less low-mid.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 0.8), bell (350.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) } });
+
+    addSignature (rigs, "Early 2000s Metalcore",
+        { "Screams and big clean choruses: boxiness out, presence and air, sibilance caught.",
+          { cut (S::lowCut, 110.0, 24), bell (300.0, -2.0, 1.0), bell (3000.0, 2.5, 0.9), shelf (S::highShelf, 10000.0, 2.0),
+            dynamic (bell (7000.0, 0.0, 2.5), -6.0) } },
+        { "A sampled-sounding kick and a sharp snare: kick weight at 60 Hz, the box cut, click at 4 kHz, some air.",
+          { cut (S::lowCut, 30.0, 24), bell (60.0, 2.0, 1.0), bell (400.0, -3.0, 1.0), bell (4000.0, 2.5, 1.0), shelf (S::highShelf, 11000.0, 1.5) } },
+        { "Razor-sharp guitars (drop C): the boom caught, less mud, edge at 2.8 kHz, the fizz rolled off.",
+          { cut (S::lowCut, 90.0, 24), dynamic (bell (180.0, 0.0, 1.2), -3.0), bell (450.0, -2.0, 1.0), bell (2800.0, 2.0, 1.0),
+            cut (S::highCut, 10500.0, 18) } },
+        { "An audible bass, as on the record: weight at 70 Hz, less mud, grind at 1 kHz and edge at 2.5 kHz.",
+          { cut (S::lowCut, 35.0, 24), bell (70.0, 1.5, 1.0), bell (280.0, -3.0, 1.2), bell (1000.0, 2.5, 1.0), bell (2500.0, 1.5, 1.2),
+            cut (S::highCut, 7000.0, 12) } },
+        { "A sharp, polished mix (the record measures about DR 7): low mids caught when they build, presence, a little air.",
+          { cut (S::lowCut, 25.0, 12), dynamic (bell (280.0, 0.0, 1.0), -3.0), bell (3000.0, 1.0, 0.8), shelf (S::highShelf, 11000.0, 1.0) } },
+        { "A punchy master: a touch of weight and air, a little less low-mid.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 0.8), bell (350.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) } });
+
+    addSignature (rigs, "Polished Nu Metal",
+        { "Layered raps and screams: rumble and boxiness out, presence and air, sibilance caught.",
+          { cut (S::lowCut, 100.0, 24), bell (250.0, -2.0, 1.0), bell (3500.0, 2.0, 1.0), shelf (S::highShelf, 10000.0, 2.5),
+            dynamic (bell (6500.0, 0.0, 2.5), -6.0) } },
+        { "Hip-hop punch in a rock kit: kick weight at 60 Hz, the box cut, snare crack at 3.5 kHz, some air.",
+          { cut (S::lowCut, 30.0, 24), bell (60.0, 2.5, 1.0), bell (350.0, -3.0, 1.0), bell (3500.0, 2.0, 1.0), shelf (S::highShelf, 10000.0, 1.5) } },
+        { "Thick, multitracked drop-C# guitars: the boom caught, less mud, a little edge, a smooth top.",
+          { cut (S::lowCut, 80.0, 24), dynamic (bell (200.0, 0.0, 1.2), -3.0), bell (600.0, -2.0, 1.0), bell (2000.0, 1.5, 1.0),
+            cut (S::highCut, 9000.0, 18) } },
+        { "A round bass under the guitars: weight at 70 Hz, less mud, a little growl at 800 Hz.",
+          { cut (S::lowCut, 30.0, 24), bell (70.0, 2.0, 1.0), bell (250.0, -3.0, 1.2), bell (800.0, 1.5, 1.0), cut (S::highCut, 5000.0, 12) } },
+        { "A very polished mix (the record measures DR 6 on CD): a touch of low weight, low mids caught, presence and air.",
+          { cut (S::lowCut, 25.0, 12), shelf (S::lowShelf, 70.0, 1.0), dynamic (bell (300.0, 0.0, 1.0), -3.0), bell (3000.0, 1.0, 0.8),
+            shelf (S::highShelf, 11000.0, 1.5) } },
+        { "A loud, polished master: a touch of weight and air, a little less low-mid.",
+          { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (300.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) } });
+
+    // More starting points (0.19.0, the owner's ask): one per source (x51
+    // on), one-job fixes (x71 on) and mastering targets (E51 on). Each uses
+    // CONSTRICTOR's, DOMINION's or the LIMITER's preset of the same purpose,
+    // so a stomp's PRESET menu shows what the rig has.
+    const auto add = [&rigs] (const juce::String& name, int bank, int number, const juce::StringArray& tags, const juce::String& notes,
+                              const std::vector<BandSpec>& bands, const char* comp = nullptr, const char* dom = nullptr, const char* lim = nullptr)
+    {
+        auto rig = makeRig (name, bank, number, tags, notes, bands);
+        if (comp != nullptr)
+        {
+            applyPreset (rig, CompPresets::factory(), comp, ParamIDs::compOn);
+            rig.notes << " CONSTRICTOR: its \"" << comp << "\" preset.";
+        }
+        if (dom != nullptr)
+        {
+            applyPreset (rig, DominionPresets::factory(), dom, ParamIDs::domOn);
+            rig.notes << " DOMINION: its \"" << dom << "\" preset.";
+        }
+        if (lim != nullptr)
+        {
+            applyPreset (rig, LimiterPresets::factory(), lim, ParamIDs::limitOn);
+            rig.notes << " LIMITER: its \"" << lim << "\" preset.";
+        }
+        rigs.push_back (std::move (rig));
+    };
+
+    // Sources: vocals
+    add ("Scream Vocal", vocals, 51, { "Vocal", "Scream" },
+         "Screams: chest boom caught when it builds, the harsh edge tamed, presence kept.",
+         { cut (S::lowCut, 120.0, 24), dynamic (bell (300.0, 0.0, 1.2), -4.0), bell (2500.0, 1.5, 1.0), dynamic (bell (4000.0, 0.0, 1.5), -4.0),
+           shelf (S::highShelf, 10000.0, 1.5) },
+         "Scream Control", "Vocal De-Harsh");
+    add ("Breathy Pop Vocal", vocals, 52, { "Vocal", "Pop", "Lead" },
+         "A close, breathy lead: warmth kept, presence and lots of air, sibilance caught.",
+         { cut (S::lowCut, 90.0, 18), bell (250.0, -1.5, 1.0), bell (4000.0, 2.0, 0.9), shelf (S::highShelf, 11000.0, 3.0),
+           dynamic (bell (6500.0, 0.0, 2.5), -6.0) },
+         "Vocal Smooth & Bright", "Vocal Sibilance");
+    add ("Choir & Group Vocals", vocals, 53, { "Vocal", "Choir", "Group" },
+         "Many voices together: thinner at the bottom so they don't swamp the mix, smooth in the middle, airy on top.",
+         { cut (S::lowCut, 150.0, 24), bell (400.0, -2.0, 0.8), bell (2500.0, -1.0, 1.0), shelf (S::highShelf, 10000.0, 2.0) },
+         "Backing Vocals Tuck", "Backing Vocals Soft");
+    add ("Podcast Voice", vocals, 54, { "Voice", "Podcast", "Voice-over" },
+         "A spoken voice for podcasts: proximity boom caught, clarity at 3 kHz, sibilance caught.",
+         { cut (S::lowCut, 80.0, 24), dynamic (bell (150.0, 0.0, 1.0), -3.0), bell (3000.0, 1.5, 1.0), dynamic (bell (6500.0, 0.0, 2.5), -5.0) },
+         "Podcast Voice", "Podcast Voice", "Podcast (-16 LUFS)");
+
+    // Sources: drums
+    add ("Toms", drums, 51, { "Drums", "Toms" },
+         "Toms: weight at 100 Hz, the boxy ring cut, attack at 4 kHz.",
+         { cut (S::lowCut, 50.0, 18), bell (100.0, 2.0, 1.0), bell (500.0, -3.0, 1.2), bell (4000.0, 2.0, 1.0) },
+         "Toms Punch", "Toms Ring");
+    add ("Room Mics", drums, 52, { "Drums", "Room" },
+         "Room mics: the low boom and boxiness out, crushed for size (blend it under the kit).",
+         { cut (S::lowCut, 80.0, 18), bell (400.0, -3.0, 1.0), shelf (S::highShelf, 8000.0, 1.5) },
+         "Room Crush", "Room Boxiness");
+    add ("Snare Bottom", drums, 53, { "Drums", "Snare" },
+         "The snare's bottom mic: no low end, the wires' sizzle brought out.",
+         { cut (S::lowCut, 200.0, 24), bell (800.0, -2.0, 1.0), bell (6000.0, 2.0, 1.0) });
+    add ("Electronic Drums", drums, 54, { "Drums", "Electronic" },
+         "Drum machines and samples: sub weight at 50 Hz, less box, snap and air.",
+         { cut (S::lowCut, 25.0, 24), bell (50.0, 2.0, 1.0), bell (300.0, -2.0, 1.0), bell (5000.0, 1.5, 1.0), shelf (S::highShelf, 12000.0, 1.5) },
+         "Drum Bus Glue");
+
+    // Sources: instruments
+    add ("Rhythm Guitar High Gain", instruments, 51, { "Guitar", "Electric", "High gain" },
+         "Distorted rhythm guitars: the lows left to the bass, chug boom caught, less mud, the fizz rolled off.",
+         { cut (S::lowCut, 90.0, 24), dynamic (bell (180.0, 0.0, 1.2), -4.0), bell (450.0, -2.0, 1.0), bell (3000.0, 1.0, 1.0),
+           cut (S::highCut, 10000.0, 18) },
+         "Rhythm Guitar Tight", "Rhythm Guitar Whistle");
+    add ("Lead Guitar", instruments, 52, { "Guitar", "Electric", "Lead" },
+         "Solos: thinner at the bottom, a little more voice at 1.5 kHz, smooth on top, sustain evened out.",
+         { cut (S::lowCut, 120.0, 24), bell (1500.0, 2.0, 1.0), cut (S::highCut, 9000.0, 12) },
+         "Lead Guitar Sustain", "Electric Guitar Fizz");
+    add ("Clean Guitar", instruments, 53, { "Guitar", "Electric", "Clean" },
+         "Clean electric guitar: low rumble out, a little less boom, sparkle on top.",
+         { cut (S::lowCut, 80.0, 18), bell (250.0, -1.5, 1.0), shelf (S::highShelf, 8000.0, 2.0) },
+         "Acoustic Even");
+    add ("Distorted Bass", instruments, 54, { "Bass", "Distorted" },
+         "Bass with grit: an even bottom, the mud cut, the growl at 1.2 kHz, the fizz above 6 kHz rolled off.",
+         { cut (S::lowCut, 35.0, 24), dynamic (bell (70.0, 0.0, 1.4), -3.0), bell (300.0, -3.0, 1.2), bell (1200.0, 2.0, 1.0),
+           cut (S::highCut, 6000.0, 12) },
+         "Bass Even", "Bass Smoother");
+    add ("Synth Lead", instruments, 55, { "Keys", "Synth", "Lead" },
+         "A synth lead: the lows out of the way, presence, its harsh resonances smoothed.",
+         { cut (S::lowCut, 150.0, 24), bell (2500.0, 1.5, 1.0) },
+         nullptr, "Synth Lead Harsh");
+    add ("Strings & Orchestra", instruments, 56, { "Keys", "Strings", "Orchestra" },
+         "Orchestral strings and samples: rumble out, less low-mid build-up, air.",
+         { cut (S::lowCut, 60.0, 18), bell (300.0, -2.0, 0.8), shelf (S::highShelf, 10000.0, 2.0) },
+         "Synth Pad Glue");
+    add ("Organ & Electric Piano", instruments, 57, { "Keys", "Organ", "Electric piano" },
+         "Organs and electric pianos: rumble and mud out, a little bark at 1 kHz.",
+         { cut (S::lowCut, 70.0, 18), bell (250.0, -2.0, 1.0), bell (1000.0, 1.5, 1.0), cut (S::highCut, 12000.0, 12) },
+         "Piano & Keys Even");
+
+    // Fixes: one job each
+    add ("Fix: Thin Vocal", vocals, 71, { "Vocal", "Fix", "Thin" },
+         "A thin vocal: body brought up at 200 Hz, and lifted when it's quiet.",
+         { cut (S::lowCut, 70.0, 18), bell (200.0, 2.5, 0.9) }, "Thin Vocal Body");
+    add ("Fix: Nasal Vocal", vocals, 72, { "Vocal", "Fix", "Nasal" },
+         "A nasal or honky vocal: the honk round 1 kHz turned down when it sticks out.",
+         { dynamic (bell (1000.0, -1.0, 1.4), -4.0) }, nullptr, "Nasal Honk");
+    add ("Fix: Harsh Vocal", vocals, 73, { "Vocal", "Fix", "Harsh" },
+         "A harsh, piercing vocal: the upper mids turned down only when they bite.",
+         { dynamic (bell (3500.0, 0.0, 1.2), -5.0) }, "Harsh Upper Mids", "Vocal De-Harsh");
+    add ("Fix: Boxy Snare", drums, 71, { "Drums", "Snare", "Fix" },
+         "A boxy snare: the cardboard round 450 Hz cut, and turned down further on the hits.",
+         { bell (450.0, -2.5, 1.4), dynamic (bell (450.0, 0.0, 1.4), -3.0) }, "Boxy Snare", "Snare Ring");
+    add ("Fix: Ringing Toms", drums, 72, { "Drums", "Toms", "Fix" },
+         "Toms that ring on: the ring smoothed as it sustains.",
+         { cut (S::lowCut, 50.0, 18), bell (300.0, -1.5, 1.0) }, nullptr, "Toms Ring");
+    add ("Fix: Cymbal Wash", drums, 73, { "Drums", "Cymbals", "Fix" },
+         "Washy, harsh cymbals: the highs turned down when the crashes pile up.",
+         { dynamic (shelf (S::highShelf, 6000.0, 0.0), -4.0) }, "Hi-Hat Tame", "Cymbal Wash");
+    add ("Fix: Honky Guitar", instruments, 71, { "Guitar", "Fix", "Honk" },
+         "A honky guitar: the honk round 800 Hz turned down when it sticks out.",
+         { dynamic (bell (800.0, -1.0, 1.4), -4.0) }, "Honk Control", "Nasal Honk");
+    add ("Fix: Guitar Fizz", instruments, 72, { "Guitar", "Fix", "Fizz" },
+         "Fizzy distorted guitars: the fizz above 6 kHz smoothed and rolled off.",
+         { cut (S::highCut, 11000.0, 12), dynamic (shelf (S::highShelf, 6000.0, 0.0), -4.0) }, "Fizz Control", "Fizz");
+    add ("Fix: Muddy Bass", instruments, 73, { "Bass", "Fix", "Mud" },
+         "A muddy bass: 250 Hz cut, and turned down further when it piles up.",
+         { cut (S::lowCut, 30.0, 24), bell (250.0, -2.0, 1.0), dynamic (bell (250.0, 0.0, 1.2), -3.0) }, "De-Mud", "De-Mud");
+    add ("Fix: Boomy Low End", mix, 71, { "Mix", "Fix", "Boom" },
+         "A mix whose low end booms on some notes: those notes turned down as they happen, the rest left alone.",
+         { cut (S::lowCut, 25.0, 12), dynamic (shelf (S::lowShelf, 120.0, 0.0), -3.0) }, "Boom Control", "Boomy Room");
+    add ("Fix: Honky Midrange", mix, 72, { "Mix", "Fix", "Honk" },
+         "A mix that honks round 1 kHz: turned down only when it sticks out.",
+         { dynamic (bell (1000.0, 0.0, 1.0), -3.0) }, "Honk Control", "Nasal Honk");
+    add ("Fix: Sibilant Mix", mix, 73, { "Mix", "Fix", "Sibilance" },
+         "Sharp S sounds over the whole mix: 5 to 9 kHz turned down on each one.",
+         { dynamic (bell (7000.0, 0.0, 1.5), -4.0, 0.25, 0.4) }, "De-Ess");
+
+    // Mastering targets: the LIMITER's preset for each (it sets the loudness TARGET on its page: turn GAIN until INTEGRATED reaches it).
+    const std::vector<BandSpec> polish { cut (S::lowCut, 18.0, 24), bell (300.0, -0.5, 0.7), shelf (S::highShelf, 12000.0, 1.0) };
+    add ("Master for Streaming", mastering, 51, { "Mastering", "Streaming", "Loudness" },
+         "For Spotify, Apple Music, YouTube and the like: they all play at about -14 LUFS, so louder buys nothing there. "
+         "Gentle polish, -1 dBTP ceiling.", polish, nullptr, nullptr, "Streaming (-14 LUFS)");
+    add ("Master Loud Club", mastering, 52, { "Mastering", "Club", "Loudness" },
+         "As loud as club and DJ tracks (about -9 LUFS): AGGRESSIVE, oversampled, a -0.3 dBTP ceiling. Costs some punch.",
+         { cut (S::lowCut, 25.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (300.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) },
+         nullptr, nullptr, "Loud Club (-9 LUFS)");
+    add ("Master CD", mastering, 53, { "Mastering", "CD" },
+         "A CD master: loud, a -0.3 dBTP ceiling, dithered to 16 bits last (export at 16 bits).", polish, nullptr, nullptr, "CD Master (16-bit)");
+    add ("Master Hi-Res", mastering, 54, { "Mastering", "Hi-res" },
+         "For 24-bit downloads: CLEAR, oversampled, dithered to 24 bits.", polish, nullptr, nullptr, "Hi-Res (24-bit)");
+    add ("Master Gentle & Dynamic", mastering, 55, { "Mastering", "Dynamic" },
+         "Keeps the life in it: SAFE, a longer look-ahead and release, little gain.", polish, nullptr, nullptr, "Gentle & Dynamic");
+    add ("Master for Vinyl", mastering, 56, { "Mastering", "Vinyl" },
+         "Vinyl-friendly: no rumble, the very top tamed when it gets sharp, a -3 dBTP ceiling and DC filter, gently limited.",
+         { cut (S::lowCut, 25.0, 24), dynamic (shelf (S::highShelf, 8000.0, 0.0), -2.0) }, nullptr, nullptr, "Vinyl Safe");
+    add ("Master Podcast", mastering, 57, { "Mastering", "Podcast", "Voice" },
+         "A finished podcast or voice-over at -16 LUFS: rumble out, clarity, -1.5 dBTP (for the voice itself, Podcast Voice at A54).",
+         { cut (S::lowCut, 30.0, 24), bell (3000.0, 1.0, 1.0) }, nullptr, nullptr, "Podcast (-16 LUFS)");
+    add ("Master Broadcast R128", mastering, 58, { "Mastering", "Broadcast" },
+         "For TV and radio in Europe (EBU R128): -23 LUFS, -1 dBTP. Usually means turning it down (TRIM or the mix), not up.",
+         { cut (S::lowCut, 20.0, 24) }, nullptr, nullptr, "Broadcast EBU R128 (-23 LUFS)");
+    add ("Master Broadcast A/85", mastering, 59, { "Mastering", "Broadcast" },
+         "For US TV (ATSC A/85): -24 LUFS, -2 dBTP.", { cut (S::lowCut, 20.0, 24) }, nullptr, nullptr, "Broadcast ATSC A/85 (-24 LUFS)");
+
     // COMP (0.9.0) on the rigs that would usually have one: gentle settings,
     // thresholds for recordings peaking around -10 dBFS (a guess: louder or
     // quieter tracks want the THRESHOLD moved).
@@ -512,7 +848,7 @@ std::vector<Rig> makeFactoryRigs()
     // style with TRUE PEAK): a -1 dBTP ceiling, the most streaming services
     // allow, as a safety net against overs rather than to make it louder.
     for (auto& rig : rigs)
-        if (rig.bank == mastering)
+        if (rig.bank == mastering && rig.parameters.count (ParamIDs::limitOn) == 0)   // (those with a LIMITER preset of their own keep it)
         {
             rig.parameters[ParamIDs::limitOn] = 1.0f;
             rig.parameters[ParamIDs::limitCeiling] = -1.0f;

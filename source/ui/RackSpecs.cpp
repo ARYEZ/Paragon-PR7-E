@@ -344,8 +344,8 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
             bar (g, glass.reduced (glass.getWidth() * 0.045f, 0.0f).withTop (glass.getBottom() - glass.getHeight() * 0.18f).withHeight (glass.getHeight() * 0.06f),
                  reduction / 12.0f);
         };
-        s.footTitle = "STYLE";
-        s.footText = [&p] { return textOf (p, limitMode); };
+        s.footTitle = "PRESET";   // its style is on the screen (STYLE here until 0.19.0)
+        s.footText = [&p] { return p.getLimiterPresetName() + (p.isLimiterPresetModified() ? " *" : ""); };
         s.onEdit = [actions] { actions.openPage (3); };
     }
     return specs;

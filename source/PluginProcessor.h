@@ -12,6 +12,7 @@
 #include "dsp/dominion/Dominion.h"
 #include "rigs/CompPresets.h"
 #include "rigs/DominionPresets.h"
+#include "rigs/LimiterPresets.h"
 #include "dsp/effects/Compressor.h"
 #include "dsp/effects/MasterLimiter.h"
 #include "dsp/eq/EqMatchSession.h"
@@ -178,6 +179,14 @@ public:
     bool isCompPresetModified() { return ! CompPresets::matches (compPreset, parameters); }
     void rememberCompPreset (const CompPreset& preset) { compPreset = preset; }
 
+    // The LIMITER's own presets (0.19.0), as COMP's. A mastering one also
+    // sets the LIMITER page's loudness TARGET (not a parameter).
+    LimiterPresets& getLimiterPresets() noexcept { return limiterPresets; }
+    void loadLimiterPreset (const LimiterPreset&);
+    juce::String getLimiterPresetName() const { return limiterPreset.name; }
+    bool isLimiterPresetModified() { return ! LimiterPresets::matches (limiterPreset, parameters); }
+    void rememberLimiterPreset (const LimiterPreset& preset) { limiterPreset = preset; }
+
     // COMP's bands as set now (any thread), and each band now (the page's
     // meters). Look-ahead's delay is reported to the DAW from the timer.
     effects::multiband::Settings getMultibandSettings() const noexcept;
@@ -266,6 +275,8 @@ private:
     DominionPreset dominionPreset = DominionPresets::factory().front();   // "Default"
     CompPresets compPresets { {} };
     CompPreset compPreset = CompPresets::factory().front();
+    LimiterPresets limiterPresets { {} };
+    LimiterPreset limiterPreset = LimiterPresets::factory().front();
     effects::Compressor compressor;   // stomp 2, ported from PR7-C
     effects::multiband::Processor multiband;   // stomp 2's bands, before it
     struct MultibandBandParameters { std::atomic<float>* values[std::size (ParamIDs::mbBandSettings)] {}; };

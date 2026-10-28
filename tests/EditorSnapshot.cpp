@@ -619,49 +619,80 @@ TEST_CASE ("Render a drop-down menu to a PNG", "[.][snapshot-menu]")
     REQUIRE (juce::PNGImageFormat().writeImageToStream (image, stream));
 }
 
-// PARAGON_SNAPSHOT=menu.png ./ParagonX1Tests "[snapshot-preset-menu]": COMP's
-// PRESET menu from its GENRES header on (0.15.0), with one genre's submenu
-// open beside it, as the plugin's look-and-feel draws them.
-TEST_CASE ("Render COMP's genre preset submenus to a PNG", "[.][snapshot-preset-menu]")
+// PARAGON_SNAPSHOT=menu.png ./ParagonX1Tests "[snapshot-preset-menu]": a
+// stomp's whole PRESET menu (PARAGON_SNAPSHOT_STOMP=comp, dominion or
+// limiter; COMP by default), laid out as PresetButton lays it out, with one
+// submenu (PARAGON_SNAPSHOT_GENRE: a genre or signature sound) open beside
+// it, as the plugin's look-and-feel draws them.
+TEST_CASE ("Render a stomp's preset menu to a PNG", "[.][snapshot-preset-menu]")
 {
     const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "menu.png");
-    const auto openGenre = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_GENRE", "Djent");
+    const auto openName = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_GENRE", "Djent");
+    const auto stomp = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STOMP", "comp");
+    const auto& presets = stomp == "limiter" ? LimiterPresets::factory() : stomp == "dominion" ? DominionPresets::factory() : CompPresets::factory();
     ParagonLookAndFeel look;
-    juce::StringArray genres, inGenre;
-    for (const auto& preset : CompPresets::factory())
-        if (preset.category.startsWith ("Genres/"))
-        {
-            genres.addIfNotAlreadyThere (preset.category.fromFirstOccurrenceOf ("/", false, false));
-            if (preset.category == "Genres/" + openGenre)
-                inGenre.add (preset.name);
-        }
 
-    constexpr int scale = 2, width = 190, itemHeight = 26, headerHeight = 26;
-    const auto mainHeight = headerHeight + itemHeight * genres.size() + 8;
-    juce::Image image (juce::Image::ARGB, width * 2 * scale, mainHeight * scale, true);
+    // The rows: section headers, presets, and submenus ("Group/Name" categories).
+    struct Row { juce::String text; bool header = false, submenu = false; };
+    std::vector<Row> rows;
+    juce::StringArray inOpen;
+    juce::String category = "-", group;
+    for (const auto& preset : presets)
+    {
+        if (preset.category != category)
+        {
+            category = preset.category;
+            const auto newGroup = category.upToFirstOccurrenceOf ("/", false, false);
+            if (category.contains ("/") ? newGroup != group : category.isNotEmpty())
+                rows.push_back ({ newGroup.toUpperCase(), true });
+            group = category.contains ("/") ? newGroup : juce::String();
+            if (category.contains ("/"))
+                rows.push_back ({ category.fromFirstOccurrenceOf ("/", false, false), false, true });
+        }
+        if (category.contains ("/"))
+        {
+            if (category.fromFirstOccurrenceOf ("/", false, false) == openName)
+                inOpen.add (preset.name);
+        }
+        else
+            rows.push_back ({ preset.name });
+    }
+
+    constexpr int scale = 2, width = 250, itemHeight = 24, headerHeight = 24;
+    const auto mainHeight = 8 + (int) rows.size() * itemHeight;
+    const auto subHeight = itemHeight * inOpen.size() + 8;
+    juce::Image image (juce::Image::ARGB, width * 2 * scale, juce::jmax (mainHeight, subHeight) * scale, true);
     juce::Graphics g (image);
     g.addTransform (juce::AffineTransform::scale ((float) scale));
     g.fillAll (juce::Colours::darkgrey);
 
+    int openRow = 0;
     {
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (0, 0, width, mainHeight);
         look.drawPopupMenuBackground (g, width, mainHeight);
-        look.drawPopupMenuSectionHeader (g, { 0, 4, width, headerHeight }, "GENRES");
-        for (int i = 0; i < genres.size(); ++i)
-            look.drawPopupMenuItem (g, { 0, 4 + headerHeight + i * itemHeight, width, itemHeight }, false, true,
-                                    genres[i] == openGenre, false, true, genres[i], {}, nullptr, nullptr);
+        for (int i = 0; i < (int) rows.size(); ++i)
+        {
+            const juce::Rectangle<int> area { 0, 4 + i * itemHeight, width, rows[(size_t) i].header ? headerHeight : itemHeight };
+            if (rows[(size_t) i].header)
+                look.drawPopupMenuSectionHeader (g, area, rows[(size_t) i].text);
+            else
+            {
+                const auto open = rows[(size_t) i].submenu && rows[(size_t) i].text == openName;
+                openRow = open ? i : openRow;
+                look.drawPopupMenuItem (g, area, false, true, open, false, rows[(size_t) i].submenu, rows[(size_t) i].text, {}, nullptr, nullptr);
+            }
+        }
     }
+    if (! inOpen.isEmpty())
     {
-        const auto row = genres.indexOf (openGenre);
-        const auto subHeight = itemHeight * inGenre.size() + 8;
         juce::Graphics::ScopedSaveState state (g);
-        g.setOrigin (width, juce::jmin (headerHeight + row * itemHeight, mainHeight - subHeight));
+        g.setOrigin (width, juce::jlimit (0, juce::jmax (0, mainHeight - subHeight), openRow * itemHeight));
         g.reduceClipRegion (0, 0, width, subHeight);   // the background fills its clip
         look.drawPopupMenuBackground (g, width, subHeight);
-        for (int i = 0; i < inGenre.size(); ++i)
+        for (int i = 0; i < inOpen.size(); ++i)
             look.drawPopupMenuItem (g, { 0, 4 + i * itemHeight, width, itemHeight }, false, true, false, i == 0, false,
-                                    inGenre[i], {}, nullptr, nullptr);
+                                    inOpen[i], {}, nullptr, nullptr);
     }
 
     juce::File file (juce::File::getCurrentWorkingDirectory().getChildFile (path));

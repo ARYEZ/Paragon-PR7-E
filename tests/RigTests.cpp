@@ -6,6 +6,7 @@
 #include "rigs/CompPresets.h"
 #include "rigs/DominionPresets.h"
 #include "rigs/FactoryRigs.h"
+#include "rigs/LimiterPresets.h"
 
 using Catch::Matchers::WithinAbs;
 
@@ -264,6 +265,89 @@ TEST_CASE ("The rig library saves, finds, renames and deletes rigs", "[rigs]")
     }
 }
 
+TEST_CASE ("Signature sounds (0.19.0): six parts each, at x31 to x38 (bass C41 to C48), with their presets in all three stomps", "[rigs][signatures]")
+{
+    const auto rigs = makeFactoryRigs();
+    const auto find = [&rigs] (const juce::String& name) -> const Rig*
+    {
+        for (const auto& rig : rigs)
+            if (rig.name == name)
+                return &rig;
+        return nullptr;
+    };
+    const auto hasPreset = [] (const std::vector<StompPreset>& presets, const juce::String& name, const juce::String& sound)
+    {
+        return std::any_of (presets.begin(), presets.end(), [&] (const StompPreset& p) { return p.name == name && p.category == "Signature Sounds/" + sound; });
+    };
+    REQUIRE (signatureSounds.size() == 8);
+    for (int i = 0; i < signatureSounds.size(); ++i)
+    {
+        const auto sound = signatureSounds[i];
+        INFO (sound);
+        struct Part { const char* name; const char* slot; bool isBass; };
+        for (const auto& part : { Part { "Vocal", "A", false }, Part { "Drums", "B", false }, Part { "Guitars", "C", false }, Part { "Bass", "C", true },
+                                  Part { "Mix", "D", false }, Part { "Master", "E", false } })
+        {
+            INFO (part.name);
+            const auto* rig = find (sound + " " + part.name);
+            REQUIRE (rig != nullptr);
+            CHECK (rig->getSlotName() == juce::String (part.slot) + juce::String ((part.isBass ? 41 : 31) + i));
+            CHECK (rig->tags.contains (sound));
+            CHECK (rig->tags.contains ("Signature"));
+        }
+        for (const auto* part : { "Vocal", "Drums", "Bass", "Mix Bus", "Master" })
+            CHECK (hasPreset (CompPresets::factory(), sound + " " + part, sound));
+        for (const auto* part : { "Vocal", "Guitars", "Mix" })
+            CHECK (hasPreset (DominionPresets::factory(), sound + " " + part, sound));
+        CHECK (hasPreset (LimiterPresets::factory(), sound + " Master", sound));
+        CHECK (find (sound + " Master")->parameters.at (ParamIDs::limitOn) == 1.0f);
+
+        // No real names: not the artist or record, in any name, tag or note.
+        for (const auto* name : { "Spiritbox", "Eternal Blue", "Bad Omens", "Peace of Mind", "Korn", "Periphery", "Select Difficulty",
+                                  "Crown the Empire", "Resistance", "Soilwork", "Stabbing", "Killswitch", "Heartache", "Linkin", "Hybrid Theory" })
+            for (const auto& rig : rigs)
+            {
+                CHECK_FALSE (rig.name.containsIgnoreCase (name));
+                CHECK_FALSE (rig.notes.containsIgnoreCase (name));
+                CHECK_FALSE (rig.tags.joinIntoString (" ").containsIgnoreCase (name));
+            }
+    }
+}
+
+TEST_CASE ("Every preset a factory rig names in its notes exists, and the rig holds exactly its settings", "[rigs][presets]")
+{
+    // "CONSTRICTOR: its "X" preset." (or COMP, DOMINION, LIMITER): the
+    // stomp's PRESET menu then holds what the rig has.
+    struct Stomp { const char* label; const std::vector<StompPreset>& presets; bool (*holds) (const juce::String&); };
+    const Stomp stomps[] = { { "CONSTRICTOR", CompPresets::factory(), &CompPresets::holds }, { "COMP", CompPresets::factory(), &CompPresets::holds },
+                             { "DOMINION", DominionPresets::factory(), &DominionPresets::holds },
+                             { "LIMITER", LimiterPresets::factory(), &LimiterPresets::holds } };
+    int checked = 0;
+    for (const auto& rig : makeFactoryRigs())
+        for (const auto& stomp : stomps)
+        {
+            const auto marker = juce::String (stomp.label) + ": its \"";
+            if (! rig.notes.contains (marker))
+                continue;
+            const auto name = rig.notes.fromFirstOccurrenceOf (marker, false, false).upToFirstOccurrenceOf ("\"", false, false);
+            INFO (rig.name << " / " << stomp.label << " " << name);
+            const auto preset = std::find_if (stomp.presets.begin(), stomp.presets.end(), [&] (const StompPreset& p) { return p.name == name; });
+            REQUIRE (preset != stomp.presets.end());
+            for (const auto& [id, value] : preset->parameters)
+                if (id != LimiterPresetTraits::targetKey)
+                {
+                    INFO (id);
+                    REQUIRE (rig.parameters.count (id) == 1);
+                    CHECK (rig.parameters.at (id) == value);
+                }
+            for (const auto& [id, value] : rig.parameters)
+                if (stomp.holds (id) && id != ParamIDs::limitOn)
+                    CHECK (preset->parameters.count (id) == 1);
+            ++checked;
+        }
+    CHECK (checked > 150);
+}
+
 TEST_CASE ("Favourites stick, including on factory rigs", "[rigs]")
 {
     TempRigFolder temp;
@@ -289,7 +373,7 @@ TEST_CASE ("Rigs are sorted by bank and number, and < > wrap round", "[rigs]")
     Rig late;
     late.name = "Late";
     late.bank = Rig::numBanks - 1;   // the last bank, after every factory rig
-    late.number = 50;
+    late.number = Rig::maxNumber;   // after every factory rig (E59 since 0.19.0)
     library.saveAsNew (late);
 
     const auto& entries = library.getEntries();
@@ -404,11 +488,14 @@ TEST_CASE ("< and > step through the rigs in order", "[rigs]")
     r.processor.stepRig (1);   // on to bank A's genre rigs (A11)
     CHECK (r.processor.getCurrentRig().name == "Modern Metal Vocal");
     r.processor.loadRig (r.entryNamed ("Industrial Vocal"));   // A19
+    r.processor.stepRig (1);   // on to bank A's signature sounds (A31, 0.19.0)
+    CHECK (r.processor.getCurrentRig().name == "Ethereal Djent Vocal");
+    r.processor.loadRig (r.entryNamed ("Fix: Harsh Vocal"));   // A73, bank A's last
     r.processor.stepRig (1);   // on into bank B
     CHECK (r.processor.getCurrentRig().name == "Kick Punch");
     r.processor.loadRig (r.entryNamed ("Init"));
     r.processor.stepRig (-1);   // wraps round to the last rig
-    CHECK (r.processor.getCurrentRig().name == "Industrial Master");
+    CHECK (r.processor.getCurrentRig().name == "Master Broadcast A/85");   // E59 (0.19.0)
 }
 
 TEST_CASE ("Deleting the loaded rig keeps the sound, now unsaved", "[rigs]")

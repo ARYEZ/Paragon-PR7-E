@@ -207,6 +207,31 @@ LimiterPage::LimiterPage (ParagonX1AudioProcessor& p)
              "their attack; ALL-ROUND in between; AGGRESSIVE clips the top softly, loud and edgy; MODERN lets go fast after a lone "
              "peak, the best start for most music; GLUE starts under the ceiling, like a bus compressor; SAFE never distorts. "
              "BRICK, SOFT and AUTO are the earlier limiter, for older projects"),
+      preset (PresetButton::Hooks {
+          "LIMITER",
+          [] () -> const std::vector<StompPreset>& { return LimiterPresets::factory(); },
+          [&p] { return p.getLimiterPresets().user(); },
+          [&p] { return p.getLimiterPresetName(); },
+          [&p] { return p.isLimiterPresetModified(); },
+          [&p] (const StompPreset& chosen) { p.loadLimiterPreset (chosen); },
+          [&p] (const juce::String& name)
+          {
+              // Yours keep the loudness TARGET too, as the mastering ones do.
+              auto saved = LimiterPresets::capture (p.getParameters(), name);
+              saved.parameters[LimiterPresetTraits::targetKey] = (float) p.getParameters().state.getProperty (targetKey, -14.0f);
+              if (! p.getLimiterPresets().save (saved))
+                  return false;
+              p.rememberLimiterPreset (saved);
+              return true;
+          },
+          [&p] (const StompPreset& gone)
+          {
+              if (! p.getLimiterPresets().remove (gone))
+                  return false;
+              p.rememberLimiterPreset (LimiterPresets::capture (p.getParameters(), "Untitled"));
+              return true;
+          },
+          [&p] { return p.getLimiterPresets().getFolder(); } }),
       gainAttachment (p.getParameters(), ParamIDs::limitGain, gain),
       lookahead (p.getParameters(), ParamIDs::limitLookahead, "LOOKAHEAD",
                  "How far ahead it sees each peak coming (it's this much late, which your DAW makes up for). Longer is cleaner but "
@@ -268,14 +293,14 @@ LimiterPage::LimiterPage (ParagonX1AudioProcessor& p)
         processor.getParameters().state.setProperty (timeScaleKey, juce::jmax (0, timeScaleBox.getSelectedItemIndex()), nullptr);
         repaint (meterArea);
     };
-    for (auto* label : { &targetLabel, &timeScaleLabel })
+    for (auto* label : { &targetLabel, &timeScaleLabel, &presetLabel })
         styleLabel (*label);
 
     for (auto* component : std::initializer_list<juce::Component*> { &on.button, &style.box, &style.label, &back, &gain, &gainLabel,
                                                                     &truePeak.button, &unity.button, &delta.button, &dcFilter.button,
                                                                     &oversampling.box, &oversampling.label, &dither.box, &dither.label,
                                                                     &shaping.box, &shaping.label, &targetBox, &timeScaleBox, &targetLabel,
-                                                                    &timeScaleLabel, &reset })
+                                                                    &timeScaleLabel, &reset, &preset, &presetLabel })
         addAndMakeVisible (component);
     for (auto* knob : { &lookahead, &attack, &release, &linkTransients, &linkRelease, &ceiling, &trim })
     {
@@ -373,6 +398,10 @@ void LimiterPage::resized()
     style.label.setBounds (styleColumn.removeFromTop (14));
     style.box.setBounds (styleColumn.withSizeKeepingCentre (170, 26));
     back.setBounds (bar.removeFromRight (140).withSizeKeepingCentre (140, 30));
+    bar.removeFromRight (24);
+    auto presetColumn = bar.removeFromRight (220);
+    presetLabel.setBounds (presetColumn.removeFromTop (14));
+    preset.setBounds (presetColumn.withSizeKeepingCentre (220, 26));
 
     // GAIN, tall.
     auto gainColumn = gainArea.reduced (8, 10);
@@ -458,7 +487,7 @@ void LimiterPage::paint (juce::Graphics& g)
     {
         const auto latency = processor.getLimiter().getLatencySamples (processor.getLimiterSettings());
         const auto rate = processor.getLimiter().getSampleRate();
-        auto note = topBar.reduced (14, 8).withTrimmedLeft (200 + 60 + 16 + 170 + 16).withTrimmedRight (160);
+        auto note = topBar.reduced (14, 8).withTrimmedLeft (200 + 60 + 16 + 170 + 16).withTrimmedRight (160 + 244);
         g.setColour (ParagonColours::textDim);
         g.setFont (juce::FontOptions (11.0f));
         g.drawText (latency > 0 ? "Delay " + juce::String (latency * 1000.0 / rate, 2) + " ms (your DAW makes up for it)" : juce::String ("No delay"),

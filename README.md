@@ -76,6 +76,9 @@ products' names or branding go on the plugin.
     creative, and under GENRES the vocal, drums, bass, mix bus and master of each genre the genre rigs use), and your own, saved in "Comp Presets" beside your rigs. A preset changes only COMP's settings.
 - **LIMITER (row 4)**, inspired by FabFilter Pro-L 2 (our own design from its manual), last in the chain, after
   OUTPUT, so nothing can push a peak past it. Click its name for its page.
+  - **PRESET** (0.19.0), as CONSTRICTOR's and DOMINION's: mastering targets (each also sets the page's loudness
+    TARGET: turn GAIN until INTEGRATED reaches it), mix bus, tracks, and the signature sounds' masters; and your own,
+    saved in "Limiter Presets" beside your rigs.
   - **GAIN** drives the sound into the **OUTPUT** ceiling. A fast stage looks ahead (**LOOKAHEAD**, 0 to 5 ms) and eases
     into each peak so nothing passes the ceiling; a slower stage (**ATTACK**, **RELEASE**) follows the average level.
     **LINK PEAKS** and **LINK RELEASE**: how much the two sides share each stage.
@@ -111,6 +114,16 @@ products' names or branding go on the plugin.
     argent metal, hard rock, grunge, symphonic metal, industrial), at the genre's number in every bank: **x11** modern
     metal to **x19** industrial, so A11 is the modern metal vocal, B11 its drums, C11 its guitars, C21 its bass, D11
     its mix and E11 its master. Each uses the EQ and the genre's COMP and DOMINION presets.
+  - **Signature sounds** (0.19.0): eight sets of six rigs in the same way at **x31** to **x38** (bass C41 to C48), each
+    inspired by how a particular record sounds, from what's published about its production and its measured loudness,
+    and named for the sound: Ethereal Djent, Dark Synth Metal, Raw 90s Nu Metal, Clean Prog Djent, Cinematic
+    Post-Hardcore, Swedish Melodic Death, Early 2000s Metalcore, Polished Nu Metal. Each uses the EQ and presets of the
+    same name in CONSTRICTOR, DOMINION and the LIMITER. Our own reading, not anyone's settings.
+  - **More starting points** (0.19.0): one per source at **x51** on (screams, breathy pop vocal, choir, podcast voice;
+    toms, room mics, snare bottom, electronic drums; high-gain rhythm, lead and clean guitar, distorted bass, synth lead,
+    strings, organ and electric piano), one-job fixes at **x71** on (thin, nasal or harsh vocal; boxy snare, ringing
+    toms, cymbal wash; honky guitar, guitar fizz, muddy bass; boomy, honky or sibilant mix) and mastering targets at
+    **E51** on (streaming, loud club, CD, hi-res, gentle, vinyl, podcast, broadcast R128 and A/85).
 - **Undo / redo:** the header arrows, UNDO / REDO on the unit, or Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac). **BYPASS** on
   the unit bypasses the whole plugin.
 - **SETTINGS:** the tuner's reference pitch and the unit's finish.
