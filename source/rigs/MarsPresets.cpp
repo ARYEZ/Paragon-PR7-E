@@ -12,7 +12,7 @@ namespace
     {
         Style style;
         float drive;
-        std::initializer_list<std::pair<const char*, float>> others = {};
+        std::vector<std::pair<const char*, float>> others;
     };
 
     // A factory preset: its bands (from the lowest), the crossovers between
