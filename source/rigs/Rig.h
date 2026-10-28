@@ -13,7 +13,12 @@
 // RIG LEVEL for balancing rigs against each other instead.
 struct Rig
 {
-    static constexpr int numBanks = 5;          // A to E
+    // The banks (0.21.0, the owner's layout): A drums, B bass, C guitars,
+    // D synths and keys, E vocals, F the mix, G mastering. (Before, five: A
+    // vocals, B drums, C bass, guitars and keys, D mix, E mastering; rigs
+    // saved then move to their new bank as they load: see fromXml.)
+    enum Bank { drums, bass, guitars, synths, vocals, mix, master };
+    static constexpr int numBanks = 7;          // A to G
     static constexpr int maxNumber = 99;
 
     juce::String name { "New Rig" };
@@ -33,7 +38,8 @@ struct Rig
     juce::String notes;
 
     juce::String getSlotName() const;           // e.g. "A01"
-    static juce::String bankName (int bank);    // "A".."E"
+    static juce::String bankName (int bank);    // "A".."G"
+    static juce::String bankTitle (int bank);   // "Drums", "Bass" ...
 
     std::unique_ptr<juce::XmlElement> toXml() const;
     // Returns nothing if the XML isn't a rig.

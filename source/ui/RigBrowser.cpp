@@ -56,7 +56,7 @@ RigBrowser::RigBrowser (ParagonX1AudioProcessor& p) : processor (p)
     addRadio (filterButtons, "Factory Rigs", 1, [this] { filter = Filter::factory; refreshList(); });
     addRadio (bankButtons, "All Banks", 2, [this] { bankFilter = -1; refreshList(); });
     for (int bank = 0; bank < Rig::numBanks; ++bank)
-        addRadio (bankButtons, "Bank " + Rig::bankName (bank), 2, [this, bank] { bankFilter = bank; refreshList(); });
+        addRadio (bankButtons, Rig::bankName (bank) + "   " + Rig::bankTitle (bank), 2, [this, bank] { bankFilter = bank; refreshList(); });
     filterButtons[0]->setToggleState (true, juce::dontSendNotification);
     bankButtons[0]->setToggleState (true, juce::dontSendNotification);
 
@@ -90,7 +90,7 @@ RigBrowser::RigBrowser (ParagonX1AudioProcessor& p) : processor (p)
     addAndMakeVisible (tagsEditor);
 
     for (int bank = 0; bank < Rig::numBanks; ++bank)
-        bankBox.addItem (Rig::bankName (bank), bank + 1);
+        bankBox.addItem (Rig::bankName (bank) + "  " + Rig::bankTitle (bank), bank + 1);
     for (int number = 1; number <= Rig::maxNumber; ++number)
         numberBox.addItem (juce::String (number).paddedLeft ('0', 3), number);
     for (auto* box : { &bankBox, &numberBox })

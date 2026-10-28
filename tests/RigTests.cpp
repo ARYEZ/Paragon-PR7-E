@@ -53,6 +53,45 @@ namespace
     };
 }
 
+TEST_CASE ("Rigs saved with the five banks (before 0.21.0) move to their bank in the seven", "[rigs]")
+{
+    // Before: A vocals, B drums, C bass, guitars and keys, D mix, E mastering.
+    // Now: A drums, B bass, C guitars, D synths and keys, E vocals, F mix, G master.
+    const auto load = [] (const char* bank, const char* tags)
+    {
+        juce::XmlElement xml ("ParagonRig");
+        xml.setAttribute ("version", 1);
+        xml.setAttribute ("name", "Old");
+        xml.setAttribute ("bank", bank);
+        xml.setAttribute ("number", 9);
+        xml.setAttribute ("tags", tags);
+        const auto rig = Rig::fromXml (xml);
+        REQUIRE (rig.has_value());
+        CHECK (rig->number == 9);
+        return rig->getSlotName();
+    };
+    CHECK (load ("A", "Vocal") == "E09");
+    CHECK (load ("B", "Drums") == "A09");
+    CHECK (load ("C", "Bass,Mine") == "B09");
+    CHECK (load ("C", "808") == "B09");
+    CHECK (load ("C", "Keys,Piano") == "D09");
+    CHECK (load ("C", "Synth") == "D09");
+    CHECK (load ("C", "Guitar") == "C09");
+    CHECK (load ("C", "") == "C09");   // no tags: guitars, the most common
+    CHECK (load ("D", "") == "F09");
+    CHECK (load ("E", "") == "G09");
+
+    // Saved now: it stays where it is.
+    Rig rig;
+    rig.bank = Rig::mix;
+    rig.number = 4;
+    const auto again = Rig::fromXml (*rig.toXml());
+    REQUIRE (again.has_value());
+    CHECK (again->getSlotName() == "F04");
+    CHECK (Rig::bankTitle (Rig::drums) == "Drums");
+    CHECK (Rig::bankTitle (Rig::master) == "Master");
+}
+
 TEST_CASE ("A rig survives being written to a file and read back", "[rigs]")
 {
     Rig rig;
@@ -105,12 +144,12 @@ TEST_CASE ("Every factory rig is valid", "[rigs]")
     CHECK (slots.size() == (int) makeFactoryRigs().size());   // no two in the same slot
 }
 
-TEST_CASE ("PR7-X's factory rigs: Init at A01, then vocals, drums, instruments, mix and mastering; PR7-B's are gone", "[rigs]")
+TEST_CASE ("PR7-X's factory rigs: in seven banks (A drums ... G master), Init first at E01; PR7-B's are gone", "[rigs]")
 {
     const auto rigs = makeFactoryRigs();
     REQUIRE (rigs.size() > 25);
     CHECK (rigs.front().name == "Init");
-    CHECK (rigs.front().getSlotName() == "A01");
+    CHECK (rigs.front().getSlotName() == "E01");   // where it was, among the vocals, before 0.21.0 (A01)
     CHECK (rigs.front().parameters.empty());   // everything at its default: every block off
 
     // Each bank has at least four, each says what it's for, and each (but
@@ -168,14 +207,14 @@ TEST_CASE ("Genre rigs (0.15.0): six parts in nine genres, at the genre's number
         const auto genre = genres[g];
         INFO (genre);
         struct Part { const char* name; const char* slot; const char* comp; const char* dominion; };
-        const Part parts[] = { { "Vocal", "A", "Vocal", "Vocal" }, { "Drums", "B", "Drums", nullptr }, { "Guitars", "C", nullptr, "Guitars" },
-                               { "Bass", "C", "Bass", nullptr }, { "Mix", "D", "Mix Bus", "Mix" }, { "Master", "E", "Master", nullptr } };
+        const Part parts[] = { { "Vocal", "E", "Vocal", "Vocal" }, { "Drums", "A", "Drums", nullptr }, { "Guitars", "C", nullptr, "Guitars" },
+                               { "Bass", "B", "Bass", nullptr }, { "Mix", "F", "Mix Bus", "Mix" }, { "Master", "G", "Master", nullptr } };
         for (const auto& part : parts)
         {
             INFO (part.name);
             const auto* rig = find (genre + " " + part.name);
             REQUIRE (rig != nullptr);
-            const auto number = (juce::String (part.name) == "Bass" ? 21 : 11) + g;
+            const auto number = 11 + g;
             CHECK (rig->getSlotName() == juce::String (part.slot) + juce::String (number));
             CHECK (rig->tags.contains (genre));
             CHECK (rig->tags.contains ("Genre"));
@@ -284,14 +323,14 @@ TEST_CASE ("Signature sounds (0.19.0): six parts each, at x31 to x38 (bass C41 t
     {
         const auto sound = signatureSounds[i];
         INFO (sound);
-        struct Part { const char* name; const char* slot; bool isBass; };
-        for (const auto& part : { Part { "Vocal", "A", false }, Part { "Drums", "B", false }, Part { "Guitars", "C", false }, Part { "Bass", "C", true },
-                                  Part { "Mix", "D", false }, Part { "Master", "E", false } })
+        struct Part { const char* name; const char* slot; };
+        for (const auto& part : { Part { "Vocal", "E" }, Part { "Drums", "A" }, Part { "Guitars", "C" }, Part { "Bass", "B" },
+                                  Part { "Mix", "F" }, Part { "Master", "G" } })
         {
             INFO (part.name);
             const auto* rig = find (sound + " " + part.name);
             REQUIRE (rig != nullptr);
-            CHECK (rig->getSlotName() == juce::String (part.slot) + juce::String ((part.isBass ? 41 : 31) + i));
+            CHECK (rig->getSlotName() == juce::String (part.slot) + juce::String (31 + i));
             CHECK (rig->tags.contains (sound));
             CHECK (rig->tags.contains ("Signature"));
         }
@@ -373,7 +412,7 @@ TEST_CASE ("Rigs are sorted by bank and number, and < > wrap round", "[rigs]")
     Rig late;
     late.name = "Late";
     late.bank = Rig::numBanks - 1;   // the last bank, after every factory rig
-    late.number = Rig::maxNumber;   // after every factory rig (E59 since 0.19.0)
+    late.number = Rig::maxNumber;   // after every factory rig (G59 since 0.21.0)
     library.saveAsNew (late);
 
     const auto& entries = library.getEntries();
@@ -385,7 +424,8 @@ TEST_CASE ("Rigs are sorted by bank and number, and < > wrap round", "[rigs]")
     CHECK (library.step (&entries.front(), -1) == &entries.back());
     CHECK (library.step (nullptr, 1) == &entries.front());
 
-    CHECK (library.nextFreeNumber (0) == 8);   // Init and the vocal rigs fill A01 to A07
+    CHECK (library.nextFreeNumber (Rig::drums) == 7);    // the drum rigs fill A01 to A06
+    CHECK (library.nextFreeNumber (Rig::vocals) == 8);   // Init and the vocal rigs fill E01 to E07
 }
 
 TEST_CASE ("Saving and loading a rig restores the sound but not the global knobs", "[rigs]")
@@ -478,24 +518,24 @@ TEST_CASE ("< and > step through the rigs in order", "[rigs]")
 {
     RigRig r;
     r.processor.loadRig (r.entryNamed ("Init"));
-    REQUIRE (r.processor.saveCurrentRigAs ("Second"));   // filed after bank A's factory rigs, at A08
-    REQUIRE (r.processor.saveCurrentRigAs ("Third"));    // A09
-    CHECK (r.entryNamed ("Second").rig.getSlotName() == "A08");
-    r.processor.loadRig (r.entryNamed ("Vocal Mud Control"));   // A07
+    REQUIRE (r.processor.saveCurrentRigAs ("Second"));   // filed after bank E's factory rigs (Init's bank), at E08
+    REQUIRE (r.processor.saveCurrentRigAs ("Third"));    // E09
+    CHECK (r.entryNamed ("Second").rig.getSlotName() == "E08");
+    r.processor.loadRig (r.entryNamed ("Vocal Mud Control"));   // E07
     r.processor.stepRig (1);
     CHECK (r.processor.getCurrentRig().name == "Second");
     r.processor.stepRig (1);
-    r.processor.stepRig (1);   // on to bank A's genre rigs (A11)
+    r.processor.stepRig (1);   // on to bank E's genre rigs (E11)
     CHECK (r.processor.getCurrentRig().name == "Modern Metal Vocal");
-    r.processor.loadRig (r.entryNamed ("Industrial Vocal"));   // A19
-    r.processor.stepRig (1);   // on to bank A's signature sounds (A31, 0.19.0)
+    r.processor.loadRig (r.entryNamed ("Industrial Vocal"));   // E19
+    r.processor.stepRig (1);   // on to bank E's signature sounds (E31)
     CHECK (r.processor.getCurrentRig().name == "Ethereal Djent Vocal");
-    r.processor.loadRig (r.entryNamed ("Fix: Harsh Vocal"));   // A73, bank A's last
-    r.processor.stepRig (1);   // on into bank B
-    CHECK (r.processor.getCurrentRig().name == "Kick Punch");
-    r.processor.loadRig (r.entryNamed ("Init"));
+    r.processor.loadRig (r.entryNamed ("Fix: Harsh Vocal"));   // E73, bank E's last
+    r.processor.stepRig (1);   // on into bank F, the mix
+    CHECK (r.processor.getCurrentRig().name == "Mix Bus Polish");
+    r.processor.loadRig (r.entryNamed ("Kick Punch"));   // A01, the first
     r.processor.stepRig (-1);   // wraps round to the last rig
-    CHECK (r.processor.getCurrentRig().name == "Master Broadcast A/85");   // E59 (0.19.0)
+    CHECK (r.processor.getCurrentRig().name == "Master Broadcast A/85");   // G59
 }
 
 TEST_CASE ("Deleting the loaded rig keeps the sound, now unsaved", "[rigs]")

@@ -108,15 +108,15 @@ products' names or branding go on the plugin.
   both speakers). **Signal chain** (bottom strip): input → ECHELON → DOMINION → CONSTRICTOR → GUILLOTINE → output, growing as the stomps are built.
 - **PRESENCE** cuts or boosts the top end (above about 3.5 kHz).
 - **Rigs:** SAVE in the header saves the current sound as a rig; **<** and **>** step through rigs; a `*` after the name
-  means it's changed since loading. The **PRESETS** tab browses, files (banks A-E), tags and favourites rigs. The factory
-  rigs are EQ starting points: **A** vocals and voice (with **Init**, everything off, at A01), **B** drums, **C** bass,
-  guitars and keys, **D** the full mix, **E** mastering. INPUT and OUTPUT stay put when you switch rigs; each rig has its
-  own **RIG LEVEL**, which adds to OUTPUT.
+  means it's changed since loading. The **PRESETS** tab browses, files (banks A-G), tags and favourites rigs. The banks
+  (0.21.0): **A** drums, **B** bass, **C** guitars, **D** synths and keys, **E** vocals and voice (with **Init**,
+  everything off, at E01), **F** the full mix, **G** mastering. INPUT and OUTPUT stay put when you switch rigs; each rig
+  has its own **RIG LEVEL**, which adds to OUTPUT.
   - **Genre rigs:** a rig for each part of a song in nine heavy styles (modern metal, metalcore, djent, nu metal,
     argent metal, hard rock, grunge, symphonic metal, industrial), at the genre's number in every bank: **x11** modern
-    metal to **x19** industrial, so A11 is the modern metal vocal, B11 its drums, C11 its guitars, C21 its bass, D11
-    its mix and E11 its master. Each uses the EQ and the genre's COMP and DOMINION presets.
-  - **Signature sounds** (0.19.0): eight sets of six rigs in the same way at **x31** to **x38** (bass C41 to C48), each
+    metal to **x19** industrial, so A11 is the modern metal drums, B11 its bass, C11 its guitars, E11 its vocal, F11
+    its mix and G11 its master. Each uses the EQ and the genre's COMP and DOMINION presets.
+  - **Signature sounds** (0.19.0): eight sets of six rigs in the same way at **x31** to **x38**, each
     inspired by how a particular record sounds, from what's published about its production and its measured loudness,
     and named for the sound: Ethereal Djent, Dark Synth Metal, Raw 90s Nu Metal, Clean Prog Djent, Cinematic
     Post-Hardcore, Swedish Melodic Death, Early 2000s Metalcore, Polished Nu Metal. Each uses the EQ and presets of the
@@ -125,7 +125,7 @@ products' names or branding go on the plugin.
     toms, room mics, snare bottom, electronic drums; high-gain rhythm, lead and clean guitar, distorted bass, synth lead,
     strings, organ and electric piano), one-job fixes at **x71** on (thin, nasal or harsh vocal; boxy snare, ringing
     toms, cymbal wash; honky guitar, guitar fizz, muddy bass; boomy, honky or sibilant mix) and mastering targets at
-    **E51** on (streaming, loud club, CD, hi-res, gentle, vinyl, podcast, broadcast R128 and A/85).
+    **G51** on (streaming, loud club, CD, hi-res, gentle, vinyl, podcast, broadcast R128 and A/85).
 - **Undo / redo:** the header arrows, UNDO / REDO on the unit, or Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac). **BYPASS** on
   the unit bypasses the whole plugin.
 - **SETTINGS:** the tuner's reference pitch and the unit's finish.

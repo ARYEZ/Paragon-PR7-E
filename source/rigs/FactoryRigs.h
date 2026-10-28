@@ -13,7 +13,7 @@ std::vector<Rig> makeFactoryRigs();
 // particular record sounds, from what's published about its production and
 // its measured loudness. Named for the sound, never the artist or record
 // (no real names on the plugin). Each has six rigs (vocal, drums, guitars,
-// bass, mix, master, at x31 to x38; bass C41 to C48) and presets of the same
+// bass, mix, master, at x31 to x38 in their banks) and presets of the same
 // name in CONSTRICTOR, DOMINION and the LIMITER ("Signature Sounds/<name>").
 inline const juce::StringArray signatureSounds { "Ethereal Djent", "Dark Synth Metal", "Raw 90s Nu Metal", "Clean Prog Djent",
                                                  "Cinematic Post-Hardcore", "Swedish Melodic Death", "Early 2000s Metalcore",

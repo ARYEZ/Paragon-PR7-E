@@ -21,6 +21,36 @@ namespace
     //     become GAIN and OUTPUT (see convertOldLimiter).
     constexpr int parameterVersion = 36;
 
+    // Which bank layout the rig's letter means: 2 since 0.21.0 (A drums ...
+    // G master); 1 (no attribute) the five banks before.
+    constexpr int bankLayout = 2;
+
+    // A rig saved with the five banks: its bank in the seven. Bank C held
+    // bass, guitars and keys; its tags say which (guitars if they don't).
+    int bankFromOldLayout (int oldBank, const juce::StringArray& tags)
+    {
+        switch (oldBank)
+        {
+            case 0: return Rig::vocals;
+            case 1: return Rig::drums;
+            case 3: return Rig::mix;
+            case 4: return Rig::master;
+            default: break;
+        }
+        const auto tagged = [&tags] (std::initializer_list<const char*> words)
+        {
+            for (const auto* word : words)
+                if (tags.contains (word, true))
+                    return true;
+            return false;
+        };
+        if (tagged ({ "Bass", "808" }))
+            return Rig::bass;
+        if (tagged ({ "Keys", "Synth", "Piano", "Pad", "Organ", "Strings" }))
+            return Rig::synths;
+        return Rig::guitars;
+    }
+
     const juce::Identifier rigTag { "ParagonRig" };
     const juce::Identifier parameterTag { "Param" };
 }
@@ -28,6 +58,12 @@ namespace
 juce::String Rig::bankName (int bankIndex)
 {
     return juce::String::charToString ((juce::juce_wchar) ('A' + juce::jlimit (0, numBanks - 1, bankIndex)));
+}
+
+juce::String Rig::bankTitle (int bankIndex)
+{
+    static const juce::StringArray titles { "Drums", "Bass", "Guitars", "Synths", "Vocals", "Mix", "Master" };
+    return titles[juce::jlimit (0, numBanks - 1, bankIndex)];
 }
 
 juce::String Rig::getSlotName() const
@@ -42,6 +78,7 @@ std::unique_ptr<juce::XmlElement> Rig::toXml() const
     xml->setAttribute ("parameterVersion", parameterVersion);
     xml->setAttribute ("name", name);
     xml->setAttribute ("bank", bankName (bank));
+    xml->setAttribute ("bankLayout", bankLayout);
     xml->setAttribute ("number", number);
     xml->setAttribute ("favourite", favourite);
     xml->setAttribute ("tags", tags.joinIntoString (","));
@@ -75,6 +112,8 @@ std::optional<Rig> Rig::fromXml (const juce::XmlElement& xml)
     rig.tags.trim();
     rig.tags.removeEmptyStrings();
     rig.notes = xml.getStringAttribute ("notes");
+    if (xml.getIntAttribute ("bankLayout", 1) < 2)   // saved with the five banks (before 0.21.0)
+        rig.bank = bankFromOldLayout (bankLetter.isEmpty() ? 0 : juce::jlimit (0, 4, (int) (bankLetter[0] - 'A')), rig.tags);
 
     for (const auto* parameter : xml.getChildWithTagNameIterator (parameterTag))
         if (const auto id = parameter->getStringAttribute ("id"); id.isNotEmpty())

@@ -6,7 +6,7 @@
 
 // The PRESETS page: browse, load, file and organise rigs.
 //
-//   left:   filters (all / favourites / mine / factory) and banks A-D
+//   left:   filters (all / favourites / mine / factory) and banks A-G (drums ... master)
 //   middle: search box and the list of rigs (double-click to load)
 //   right:  the selected rig's details: name, favourite, bank, number,
 //           tags, what it uses, and the buttons to act on it

@@ -941,7 +941,7 @@ TEST_CASE ("Factory rigs: none boosts wildly, mastering ones move 2 dB at most, 
         {
             const auto [most, least] = curveExtremes (settings, 40.0, 16000.0, placement);
             CHECK (most <= 4.5);   // starting points, not drastic
-            if (factory.bank == 4 && placement == eq::Placement::stereo)   // mastering
+            if (factory.bank == Rig::master && placement == eq::Placement::stereo)
             {
                 CHECK (most <= 2.0);
                 CHECK (least >= -2.0);
