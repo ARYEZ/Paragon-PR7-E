@@ -470,16 +470,24 @@ TEST_CASE ("STEREO width: 0 is mono, 200 doubles the side, and the mid never cha
 
 TEST_CASE ("STEREO: off, and at 100 percent, leaves the audio as it was", "[stereo]")
 {
-    // Off (its POWER), with both halves on and their knobs moved: untouched.
+    // Off (its POWER), with both halves on and their knobs moved: exactly
+    // what the same chain gives with BINARY never touched. (Compared with a
+    // second processor rather than the input: the rest of the chain, off,
+    // can differ from the input in the last bit on some machines.)
+    const auto input = wide (60.0f, 80.0f, 24000);
+    auto untouched = input;
+    process (*makeProcessor(), untouched);
     auto processor = makeProcessor();
     set (*processor, ParamIDs::stereoWidth, 180.0f);
     set (*processor, ParamIDs::stereoMonoFreq, 300.0f);
-    const auto input = wide (60.0f, 80.0f, 24000);
     auto output = input;
     process (*processor, output);
     for (int channel = 0; channel < 2; ++channel)
         for (int i = 0; i < input.getNumSamples(); ++i)
-            REQUIRE (juce::exactlyEqual (input.getSample (channel, i), output.getSample (channel, i)));
+        {
+            REQUIRE (juce::exactlyEqual (untouched.getSample (channel, i), output.getSample (channel, i)));
+            REQUIRE_THAT (output.getSample (channel, i), WithinAbs (input.getSample (channel, i), 1.0e-6));
+        }
 
     processor = makeStereo (false, true);
     output = input;

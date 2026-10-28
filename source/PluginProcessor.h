@@ -286,13 +286,18 @@ private:
     // The tuner only listens; the other stomps aren't built yet.
     // Stomp 4, the EQ (stereo itself), then PRESENCE: one per channel,
     // since each keeps its filter's memory.
-    eq::ParametricEq parametricEq;
+    // The biggest engines live on the heap (0.22.0): a processor held on the
+    // stack (as the tests hold them) would otherwise pass 300 KB, and a few
+    // at once overflowed Windows' 1 MB stack. Each reference is its engine.
+    std::unique_ptr<eq::ParametricEq> parametricEqHeld = std::make_unique<eq::ParametricEq>();
+    eq::ParametricEq& parametricEq = *parametricEqHeld;
     struct EqBandParameters { std::atomic<float>* values[std::size (ParamIDs::eqBandSettings)] {}; };
     std::array<EqBandParameters, ParamIDs::eqNumBands> eqBandParameters {};
     std::atomic<int> eqSoloBand { -1 };
     InputTap eqInputTap { 16384 }, eqOutputTap { 16384 };   // what goes into and comes out of the EQ, for its analyser
     eq::match::Session eqMatch { {} };
-    dominion::Processor dominionProcessor;   // stomp 5
+    std::unique_ptr<dominion::Processor> dominionHeld = std::make_unique<dominion::Processor>();
+    dominion::Processor& dominionProcessor = *dominionHeld;   // stomp 5
     struct DominionBandParameters { std::atomic<float>* values[std::size (ParamIDs::domBandSettings)] {}; };
     std::array<DominionBandParameters, ParamIDs::domNumBands> dominionBandParameters {};
     std::atomic<int> dominionListen { -1 };
@@ -312,7 +317,8 @@ private:
     juce::AudioBuffer<float> compSidechain;   // what it listens to: the audio itself
     // MARS: PR7-V's saturation, which is mono, so one per side: left and
     // right stay apart (each side's DYNAMICS follows its own level).
-    std::array<effects::Mars, effects::maxChannels> mars;
+    std::unique_ptr<std::array<effects::Mars, effects::maxChannels>> marsHeld = std::make_unique<std::array<effects::Mars, effects::maxChannels>>();
+    std::array<effects::Mars, effects::maxChannels>& mars = *marsHeld;
     std::array<std::array<std::atomic<float>*, 12>, effects::Mars::maxBands> marsBandParameters {};   // by ParamIDs::marsBandParts
     effects::StereoTools stereoTools;   // STEREO: PR7-C's mono maker and width
     std::atomic<float> stereoCorrelation { 1.0f };
@@ -348,7 +354,8 @@ private:
         double ppq = 0.0, bpm = 120.0;
         int numerator = 4, denominator = 4;
     } hostPosition;
-    oracle::Timeline oracleTimeline;
+    std::unique_ptr<oracle::Timeline> oracleTimelineHeld = std::make_unique<oracle::Timeline>();
+    oracle::Timeline& oracleTimeline = *oracleTimelineHeld;
     oracle::Transcriber oracle;
 
     UndoHistory<Snapshot> history;
