@@ -19,7 +19,8 @@ namespace
     //     default, so an older rig, which doesn't mention it, sounds as it did).
     // 36: PR7-E 0.16.0, the LIMITER after Pro-L 2: THRESHOLD and MAKE UP
     //     become GAIN and OUTPUT (see convertOldLimiter).
-    constexpr int parameterVersion = 36;
+    // 37: PR7-X 0.22.0, MARS and STEREO (off by default: nothing to migrate).
+    constexpr int parameterVersion = 37;
 
     // Which bank layout the rig's letter means: 2 since 0.21.0 (A drums ...
     // G master); 1 (no attribute) the five banks before.

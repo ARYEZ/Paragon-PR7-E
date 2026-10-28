@@ -82,7 +82,9 @@ void RackUnit::timerCallback()
 
 void RackUnit::paint (juce::Graphics& g)
 {
-    const auto scale = (float) getWidth() / referenceWidth;
+    // For fonts and strokes: the smaller of the two stretches, so a shorter
+    // unit (six rows since 0.22.0) keeps its lettering inside its height.
+    const auto scale = juce::jmin ((float) getWidth() / referenceWidth, (float) getHeight() / referenceHeight);
     const auto ink = Finish::ink(), red = Finish::printedRed();
 
     // Rack screws at both ends: chrome, slotted, set into the panel.

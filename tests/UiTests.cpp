@@ -8,6 +8,9 @@
 #include "ui/Finish.h"
 #include "ui/PerformanceControls.h"
 #include "ui/OraclePage.h"
+#include "ui/MarsPage.h"
+#include "ui/StereoPage.h"
+#include "ui/SignalChain.h"
 
 using Catch::Matchers::WithinAbs;
 
@@ -165,8 +168,8 @@ TEST_CASE ("The chain's blocks open their stomps' pages; there's no dock under t
     // The LIMITER's EDIT opens its own page; BACK TO PEDAL comes back.
     std::vector<RackUnit*> racks;
     findAll (*editor, racks);
-    REQUIRE (racks.size() == 4);
-    racks[3]->getEdit().onClick();
+    REQUIRE (racks.size() == 6);
+    racks[5]->getEdit().onClick();
     CHECK (limiterPages[0]->isVisible());
     std::vector<juce::TextButton*> buttons;
     findAll (*limiterPages[0], buttons);
@@ -177,7 +180,7 @@ TEST_CASE ("The chain's blocks open their stomps' pages; there's no dock under t
     CHECK (racks[0]->isVisible());   // back on the unit
 }
 
-TEST_CASE ("Four rack units, one to a row in the chain's order, each switched by its POWER footswitch", "[ui]")
+TEST_CASE ("Six rack units, one to a row in the chain's order, each switched by its POWER footswitch", "[ui]")
 {
     ParagonX1AudioProcessor processor;
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -185,10 +188,11 @@ TEST_CASE ("Four rack units, one to a row in the chain's order, each switched by
 
     // 0.18.0: the four rows are rack units, after the owner's photo of a
     // rack (SPX90, PCM70, SDE-3000): ECHELON, DOMINION, CONSTRICTOR, LIMITER.
+    // 0.22.0: six, with MARS and BINARY before GUILLOTINE.
     std::vector<RackUnit*> racks;
     findAll (*editor, racks);
-    REQUIRE (racks.size() == 4);
-    const juce::StringArray names { "ECHELON", "DOMINION", "CONSTRICTOR", "GUILLOTINE" };
+    REQUIRE (racks.size() == 6);
+    const juce::StringArray names { "ECHELON", "DOMINION", "CONSTRICTOR", "MARS", "BINARY", "GUILLOTINE" };
     for (size_t i = 0; i < racks.size(); ++i)
     {
         INFO (names[(int) i]);
@@ -199,14 +203,14 @@ TEST_CASE ("Four rack units, one to a row in the chain's order, each switched by
             CHECK (racks[i]->getY() >= racks[i - 1]->getBottom());                           // under the one above, not overlapping
         }
     }
-    CHECK (racks[3]->getBottom() <= editor->getChildComponent (0)->getHeight());
+    CHECK (racks[5]->getBottom() <= editor->getChildComponent (0)->getHeight());
 
     // The footswitches are the units' POWER switches: no stomps or rig pads any more.
     std::vector<Footswitch*> switches;
     findAll (*editor, switches);
-    REQUIRE (switches.size() == 4);
+    REQUIRE (switches.size() == 6);
     const auto isOn = [&] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load() > 0.5f; };
-    const char* onIds[] = { ParamIDs::eqOn, ParamIDs::domOn, ParamIDs::compOn, ParamIDs::limitOn };
+    const char* onIds[] = { ParamIDs::eqOn, ParamIDs::domOn, ParamIDs::compOn, ParamIDs::marsOn, ParamIDs::stereoOn, ParamIDs::limitOn };
     for (size_t i = 0; i < racks.size(); ++i)
     {
         INFO (names[(int) i]);
@@ -245,7 +249,7 @@ TEST_CASE ("Rack units: the keys switch what they're labelled, the knobs are the
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
     std::vector<RackUnit*> racks;
     findAll (*editor, racks);
-    REQUIRE (racks.size() == 4);
+    REQUIRE (racks.size() == 6);
     const auto value = [&] (const char* id) { return processor.getParameters().getRawParameterValue (id)->load(); };
     const auto press = [&] (RackUnit& rack, const juce::String& label)
     {
@@ -270,7 +274,15 @@ TEST_CASE ("Rack units: the keys switch what they're labelled, the knobs are the
     CHECK (press (*racks[2], "OPTO"));   // the characters are one choice: OPTO replaces FET
     CHECK (juce::roundToInt (value (ParamIDs::compCharacter)) == 1);
     const auto truePeak = value (ParamIDs::limitTruePeak) > 0.5f;
-    CHECK (press (*racks[3], "TRUE PEAK") == ! truePeak);
+    CHECK (press (*racks[3], "8x"));   // MARS's QUALITY, one choice: 8x is Superb
+    CHECK (juce::roundToInt (value (ParamIDs::marsQuality)) == 2);
+    CHECK (press (*racks[3], "1x"));
+    CHECK (juce::roundToInt (value (ParamIDs::marsQuality)) == 0);
+    CHECK (press (*racks[4], "MONO"));   // BINARY's listening in mono
+    CHECK (value (ParamIDs::stereoListenMono) > 0.5f);
+    CHECK_FALSE (press (*racks[4], "WIDTH"));   // on by default (under BINARY's POWER): pressing turns it off
+    CHECK (value (ParamIDs::stereoWidthOn) < 0.5f);
+    CHECK (press (*racks[5], "TRUE PEAK") == ! truePeak);
 
     // ECHELON's MATCH opens ECHELON's page.
     std::vector<EqPage*> eqPages;
@@ -279,9 +291,11 @@ TEST_CASE ("Rack units: the keys switch what they're labelled, the knobs are the
     press (*racks[0], "MATCH");
     CHECK (eqPages[0]->isVisible());
 
-    const std::array<std::array<const char*, 2>, 4> knobs { { { ParamIDs::eqOutput, ParamIDs::eqGainScale },
+    const std::array<std::array<const char*, 2>, 6> knobs { { { ParamIDs::eqOutput, ParamIDs::eqGainScale },
                                                               { ParamIDs::domDepth, ParamIDs::domDetail },
                                                               { ParamIDs::compThreshold, ParamIDs::compRatio },
+                                                              { ParamIDs::marsInput, ParamIDs::marsMix },
+                                                              { ParamIDs::stereoMonoFreq, ParamIDs::stereoWidth },
                                                               { ParamIDs::limitGain, ParamIDs::limitCeiling } } };
     for (size_t i = 0; i < racks.size(); ++i)
         for (size_t k = 0; k < 2; ++k)
@@ -441,4 +455,77 @@ TEST_CASE ("Opening the window changes nothing in the sound: the rack units only
     juce::MemoryBlock afterPlaying;
     open.getStateInformation (afterPlaying);
     CHECK (afterPlaying == before);
+}
+
+TEST_CASE ("MARS and BINARY: EDIT and the chain open their pages, BACK comes back", "[ui][mars][stereo]")
+{
+    ParagonX1AudioProcessor processor;
+    std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
+    editor->setSize (1600, 900);
+    std::vector<RackUnit*> racks;
+    findAll (*editor, racks);
+    REQUIRE (racks.size() == 6);
+    std::vector<MarsPage*> marsPages;
+    std::vector<StereoPage*> stereoPages;
+    findAll (*editor, marsPages);
+    findAll (*editor, stereoPages);
+    REQUIRE (marsPages.size() == 1);
+    REQUIRE (stereoPages.size() == 1);
+
+    const auto backOf = [] (juce::Component& page)
+    {
+        std::vector<juce::TextButton*> buttons;
+        findAll (page, buttons);
+        const auto back = std::find_if (buttons.begin(), buttons.end(), [] (auto* b) { return b->getButtonText() == "BACK TO PEDAL"; });
+        REQUIRE (back != buttons.end());
+        (*back)->onClick();
+    };
+
+    CHECK_FALSE (marsPages[0]->isVisible());
+    racks[3]->getEdit().onClick();
+    CHECK (marsPages[0]->isVisible());
+    CHECK_FALSE (racks[3]->isVisible());
+    backOf (*marsPages[0]);
+    CHECK_FALSE (marsPages[0]->isVisible());
+    CHECK (racks[3]->isVisible());
+
+    racks[4]->getEdit().onClick();
+    CHECK (stereoPages[0]->isVisible());
+    backOf (*stereoPages[0]);
+    CHECK_FALSE (stereoPages[0]->isVisible());
+
+    // The signal chain: six blocks, MARS fourth and BINARY fifth, opening their pages.
+    std::vector<SignalChain*> chains;
+    findAll (*editor, chains);
+    REQUIRE (chains.size() == 1);
+    chains[0]->onSelect (3);
+    CHECK (marsPages[0]->isVisible());
+    chains[0]->onSelect (4);
+    CHECK (stereoPages[0]->isVisible());
+    CHECK_FALSE (marsPages[0]->isVisible());
+}
+
+TEST_CASE ("MARS's page: picking a band moves its controls to that band", "[ui][mars]")
+{
+    ParagonX1AudioProcessor processor;
+    MarsPage page (processor);
+    page.setSize (1420, 720);
+    auto& state = processor.getParameters();
+    state.getParameter (ParamIDs::marsBands)->setValueNotifyingHost (state.getParameter (ParamIDs::marsBands)->convertTo0to1 (2.0f));   // 3 bands
+
+    std::vector<juce::Slider*> sliders;
+    findAll (page, sliders);
+    const auto driveKnob = std::find_if (sliders.begin(), sliders.end(), [] (auto* s) { return s->getTooltip().startsWith ("How hard the band is driven"); });
+    REQUIRE (driveKnob != sliders.end());
+
+    page.selectBand (2);
+    (*driveKnob)->setValue (0.8, juce::sendNotificationSync);
+    CHECK_THAT (state.getRawParameterValue (ParamIDs::marsBand (2, "Drive"))->load(), Catch::Matchers::WithinAbs (0.8, 0.001));
+    CHECK_THAT (state.getRawParameterValue (ParamIDs::marsBand (0, "Drive"))->load(), Catch::Matchers::WithinAbs (0.3, 0.001));   // band 1 untouched
+    page.selectBand (0);
+    CHECK_THAT ((*driveKnob)->getValue(), Catch::Matchers::WithinAbs (0.3, 0.001));
+
+    // The display: its frequency scale goes both ways.
+    auto& display = page.getDisplay();
+    CHECK_THAT (display.frequencyAt (display.xFor (1000.0f)), Catch::Matchers::WithinRel (1000.0, 0.01));
 }

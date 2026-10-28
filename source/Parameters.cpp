@@ -4,6 +4,7 @@
 
 #include "dsp/dominion/Dominion.h"
 #include "dsp/effects/MasterLimiter.h"
+#include "dsp/effects/Mars.h"
 #include "dsp/eq/Dynamics.h"
 #include "dsp/eq/EqDesign.h"
 
@@ -306,6 +307,60 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         layout.add (makeSwitch (ParamIDs::limitUnity, "Guillotine Unity Gain", v36, false));
         layout.add (makeSwitch (ParamIDs::limitDelta, "Guillotine Delta", v36, false));
         layout.add (makeSwitch (ParamIDs::limitDcFilter, "Guillotine DC Filter", v36, false));
+    }
+
+    // Added in 0.22.0 (version hint 37): MARS, PR7-V's saturation (its
+    // parameters as there, its bands renamed marsB...), and STEREO, PR7-C's
+    // mono maker and width. Both off by default: nothing changes for old projects.
+    {
+        constexpr int v37 = 37;
+        const auto skewed = [] (float min, float max, float centre, float step)
+        {
+            Range range { min, max, step };
+            range.setSkewForCentre (centre);
+            return range;
+        };
+        const ToText asCrossover = [] (float hz, int) { return hz < 1000.0f ? juce::String (juce::roundToInt (hz)) + " Hz" : juce::String (hz / 1000.0f, 2) + " kHz"; };
+        const ToText asDynamics = [] (float value, int)
+        {
+            const auto amount = juce::roundToInt (std::abs (value) * 100.0f);
+            return amount == 0 ? juce::String ("Off") : (value < 0.0f ? "Gate " : "Comp ") + juce::String (amount) + "%";
+        };
+        const ToText asMarsLevel = [] (float db, int) { return db <= effects::Mars::minLevelDb ? juce::String ("Off") : juce::String (db, 1) + " dB"; };
+        const ToText asSignedDb = [] (float db, int) { return (db > 0.0f ? "+" : "") + juce::String (db, 1) + " dB"; };
+        layout.add (makeSwitch (ParamIDs::marsOn, "Mars", v37, false));
+        layout.add (makeChoice (ParamIDs::marsBands, "Mars Bands", v37, { "1", "2", "3", "4" }, 0));
+        layout.add (makeFloat (ParamIDs::marsCross1, "Mars Crossover 1", skewed (30.0f, 16000.0f, 1000.0f, 1.0f), 250.0f, v37, asCrossover));
+        layout.add (makeFloat (ParamIDs::marsCross2, "Mars Crossover 2", skewed (30.0f, 16000.0f, 1000.0f, 1.0f), 2500.0f, v37, asCrossover));
+        layout.add (makeFloat (ParamIDs::marsCross3, "Mars Crossover 3", skewed (30.0f, 16000.0f, 1000.0f, 1.0f), 7000.0f, v37, asCrossover));
+        layout.add (makeChoice (ParamIDs::marsSlope, "Mars Crossover Slope", v37, effects::Mars::slopeNames, (int) effects::Mars::Slope::db24));
+        layout.add (makeFloat (ParamIDs::marsInput, "Mars Input", { -24.0f, 24.0f, 0.1f }, 0.0f, v37, asSignedDb));
+        layout.add (makeFloat (ParamIDs::marsOutput, "Mars Output", { -24.0f, 24.0f, 0.1f }, 0.0f, v37, asSignedDb));
+        layout.add (makeFloat (ParamIDs::marsMix, "Mars Mix", { 0.0f, 1.0f, 0.01f }, 1.0f, v37, asPercent));
+        layout.add (makeChoice (ParamIDs::marsQuality, "Mars Quality", v37, effects::Mars::qualityNames, (int) effects::Mars::Quality::good));
+        for (int band = 0; band < effects::Mars::maxBands; ++band)
+        {
+            const auto id = [band] (const char* part) { return ParamIDs::marsBand (band, part); };
+            const auto name = "Mars Band " + juce::String (band + 1) + " ";
+            layout.add (makeSwitch (id ("On").toRawUTF8(), name + "On", v37, true));
+            layout.add (makeChoice (id ("Style").toRawUTF8(), name + "Style", v37, effects::Mars::styleNames, (int) effects::Mars::Style::warmTape));
+            layout.add (makeFloat (id ("Drive").toRawUTF8(), name + "Drive", { 0.0f, 1.0f, 0.01f }, 0.3f, v37, asPercent));
+            layout.add (makeFloat (id ("Dynamics").toRawUTF8(), name + "Dynamics", { -1.0f, 1.0f, 0.01f }, 0.0f, v37, asDynamics));
+            layout.add (makeFloat (id ("Feedback").toRawUTF8(), name + "Feedback", { 0.0f, 1.0f, 0.01f }, 0.0f, v37, asPercent));
+            layout.add (makeFloat (id ("FbFreq").toRawUTF8(), name + "Feedback Frequency", skewed (50.0f, 10000.0f, 1000.0f, 1.0f), 1000.0f, v37, asCrossover));
+            for (const auto* tone : { "Bass", "Mid", "Treble", "Presence" })
+                layout.add (makeFloat (id (tone).toRawUTF8(), name + tone, { -12.0f, 12.0f, 0.1f }, 0.0f, v37, asSignedDb));
+            layout.add (makeFloat (id ("Mix").toRawUTF8(), name + "Mix", { 0.0f, 1.0f, 0.01f }, 1.0f, v37, asPercent));
+            layout.add (makeFloat (id ("Level").toRawUTF8(), name + "Level", { effects::Mars::minLevelDb, 12.0f, 0.1f }, 0.0f, v37, asMarsLevel));
+        }
+
+        const ToText wholePercent = [] (float v, int) { return juce::String (juce::roundToInt (v)) + "%"; };
+        layout.add (makeSwitch (ParamIDs::stereoOn, "Binary", v37, false));
+        layout.add (makeSwitch (ParamIDs::stereoMonoOn, "Binary Mono Maker", v37, true));
+        layout.add (makeFloat (ParamIDs::stereoMonoFreq, "Binary Mono Maker Frequency", logRange (20.0, 500.0), 100.0f, v37, asFrequency));
+        layout.add (makeSwitch (ParamIDs::stereoWidthOn, "Binary Width On", v37, true));
+        layout.add (makeFloat (ParamIDs::stereoWidth, "Binary Width", { 0.0f, 200.0f, 1.0f }, 100.0f, v37, wholePercent));
+        layout.add (makeSwitch (ParamIDs::stereoListenMono, "Binary Listen Mono", v37, false));
     }
 
     layout.add (makeFloat (ParamIDs::eqOutput, "Echelon Output", { -36.0f, 36.0f, 0.01f }, 0.0f, v30, asDb));

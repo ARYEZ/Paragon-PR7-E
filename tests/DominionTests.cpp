@@ -407,7 +407,7 @@ TEST_CASE ("DOMINION in PR7-X: its rack unit (row 2) switches it, and through th
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    REQUIRE (stomps.size() == 6);   // the rack units' POWER switches, in the chain's order
     REQUIRE (pages.size() == 1);
     CHECK_FALSE (stomps[1]->isPlaceholder());
     stomps[1]->toggle();

@@ -20,6 +20,8 @@
 #include "ui/OraclePage.h"
 #include "ui/CompPage.h"
 #include "ui/LimiterPage.h"
+#include "ui/MarsPage.h"
+#include "ui/StereoPage.h"
 
 // A side strip from the mockup: a title, a gain knob with its value
 // underneath, and a level meter.
@@ -59,8 +61,8 @@ private:
 // the whole view to the window size, staying sharp (everything is vectors).
 //
 //   header:  logo | PROCESSOR PRESETS SETTINGS | < rig > | undo redo save settings
-//   middle:  INPUT | the unit: the display along the top, then four rack
-//            units (ECHELON, DOMINION, CONSTRICTOR, the LIMITER), one to a row | OUTPUT
+//   middle:  INPUT | the unit: the display along the top, then six rack units
+//            (ECHELON, DOMINION, CONSTRICTOR, MARS, BINARY, GUILLOTINE), one to a row | OUTPUT
 //   bottom:  SIGNAL CHAIN
 class MainView final : public juce::Component,
                        private juce::ChangeListener,
@@ -83,9 +85,10 @@ private:
     // The signal chain's blocks (the EQ, DOMINION, COMP and the LIMITER, so far).
     // DOMINION's block opens its page, as its stomp's name does.
     // tunerBlock isn't in the chain (ORACLE, with the tuner, only listens): stomp 1's name opens its page.
-    enum Block { eqBlock, dominionBlock, compBlock, limiterBlock, numBlocks, tunerBlock = numBlocks };
+    enum Block { eqBlock, dominionBlock, compBlock, marsBlock, stereoBlock, limiterBlock, numBlocks, tunerBlock = numBlocks };
 
-    enum class Page { processor, presets, settings, eq, dominion, oracle, comp, limiter };   // eq to limiter: those stomps' own pages
+    // eq to stereo: those stomps' own pages (stereo is BINARY's)
+    enum class Page { processor, presets, settings, eq, dominion, oracle, comp, limiter, mars, stereo };
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void applyFinish();   // colours the printed labels and redraws the unit in the current finish
@@ -128,9 +131,10 @@ private:
                  presenceKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     juce::AudioProcessorValueTreeState::SliderAttachment rigLevelAttachment, presenceAttachment;
     juce::Label rigLevelLabel { {}, "RIG LEVEL" }, presenceLabel { {}, "PRESENCE" };
-    // The four rows (0.18.0): a rack unit each, in the chain's order. Each
-    // one's POWER footswitch turns it on or off; its name and EDIT open its page.
-    std::array<std::unique_ptr<RackUnit>, 4> racks;
+    // The rows (four in 0.18.0, six since 0.22.0): a rack unit each, in the
+    // chain's order. Each one's POWER footswitch turns it on or off; its
+    // name and EDIT open its page.
+    std::array<std::unique_ptr<RackUnit>, 6> racks;
 
     // The tuner's note for the screen
     TunerReader tunerReader;
@@ -151,6 +155,8 @@ private:
     OraclePage oraclePage;
     CompPage compPage;
     LimiterPage limiterPage;
+    MarsPage marsPage;
+    StereoPage stereoPage;   // BINARY's
     std::vector<juce::Component*> processorPage;
     Page page = Page::processor;
 

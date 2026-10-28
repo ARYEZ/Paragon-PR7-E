@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.22.0
+
+- **Two new rack units, as you asked (Option A: six rows):** the chain is now ECHELON, DOMINION, CONSTRICTOR, **MARS**, **BINARY**, GUILLOTINE. The six units share the height the four had, each a little shorter, and the signal chain under them has six blocks.
+- **MARS (saturation)** is PR7-V's MARS brought over unchanged, the one inspired by Saturn 2: up to four bands, 21 styles, DYNAMICS, FEEDBACK, tone, MIX and LEVEL per band, oversampling up to 8x, and no delay. It passes the same sound tests here that it passes in PR7-V.
+  - **One thing differs from PR7-V:** PR7-V's MARS is mono. Here there's one engine per side, so left and right stay apart. Each side's DYNAMICS follows that side's own level (they aren't linked), and a sound only on the left stays only on the left (tested).
+  - Its rack unit: POWER, a DRIVE ladder (how hard the bands are hit), a screen with each band's style and a glow as it's driven, **1x / 4x / 8x** quality keys, INPUT and MIX, and its preset. **EDIT** opens its page: the bands on a display (drag a crossover to move it, drag up and down in a band for its DRIVE) and the picked band's controls underneath.
+  - **25 presets** (mastering, mix bus, drums, bass, guitars, synths and keys, vocals, creative), and yours in "Mars Presets". Each preset's OUTPUT is set so switching it in keeps the level within 2 dB, so louder doesn't fool you. They're our own starting points, set by numbers, not tuned by ear.
+  - Its modulation (PR7-V's LFOs, envelopes and slots) isn't here yet: saturation first, as you chose.
+- **BINARY (stereo tools)** is PR7-C's MONO MAKER and WIDTH, with a correlation meter. Its rack unit: POWER, a correlation ladder, a screen with the width and the correlation, keys for **MONO LOW**, **WIDTH** and **MONO** (listen in mono), and the MONO BELOW and WIDTH knobs. **EDIT** opens its page, with a scope of the stereo image and the correlation meter, explained in plain words.
+- Both are **off by default**, so your projects and rigs sound exactly as before. The factory rigs don't use them yet.
+
 ## 0.21.0
 
 - **The rigs are filed in seven banks, as you asked:** **A** drums, **B** bass, **C** guitars, **D** synths and keys, **E** vocals, **F** mix, **G** master. The PRESETS browser lists them by name ("A Drums" to "G Master"), and so does the bank picker when you save a rig.

@@ -602,7 +602,7 @@ TEST_CASE ("EQ page: its rack unit's POWER name opens it; BACK returns to the pe
             collect (*child);
     };
     collect (*editor);
-    REQUIRE (stomps.size() == 4);   // the rack units' POWER switches, in the chain's order
+    REQUIRE (stomps.size() == 6);   // the rack units' POWER switches, in the chain's order
     REQUIRE (pages.size() == 1);
     CHECK_FALSE (pages[0]->isVisible());
 

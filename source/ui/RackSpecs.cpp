@@ -90,10 +90,10 @@ namespace
     }
 }
 
-std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackActions actions)
+std::array<RackUnit::Spec, 6> makeRackSpecs (ParagonX1AudioProcessor& p, RackActions actions)
 {
     using namespace ParamIDs;
-    std::array<RackUnit::Spec, 4> specs;
+    std::array<RackUnit::Spec, 6> specs;
 
     //==========================================================================
     // ECHELON
@@ -297,10 +297,137 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
     }
 
     //==========================================================================
-    // LIMITER
+    // MARS (0.22.0)
     {
+        using Mars = effects::Mars;
         auto& s = specs[3];
         s.number = 4;
+        s.name = "MARS";
+        s.kind = "MULTIBAND SATURATION";
+        s.series = "PR7-X SERIES  21 STYLES";
+        s.onParameterIds = { marsOn };
+        s.powerTooltip = "MARS on or off. Click POWER (the word) or EDIT for its page";
+        const auto quality = [&p] (int which) { return [&p, which] { return juce::roundToInt (valueOf (p, marsQuality)) == which; }; };
+        const auto chooseQuality = [&p] (int which) { return [&p, which] { setValue (p, marsQuality, (float) which); }; };
+        s.keys[0] = { "1x", "QUALITY off: no oversampling (the least CPU, more fold-back on hard drive)", quality (0), chooseQuality (0) };
+        s.keys[1] = { "4x", "QUALITY good: 4x oversampling", quality (1), chooseQuality (1) };
+        s.keys[2] = { "8x", "QUALITY superb: 8x oversampling, the cleanest (for mastering)", quality (2), chooseQuality (2) };
+        s.knobs = { RackUnit::Knob { marsInput, "INPUT" }, RackUnit::Knob { marsMix, "MIX" } };
+        s.ladderTitle = "DRIVE";
+        s.ladderMarks = { 1.0f, 0.75f, 0.5f, 0.25f, 0.1f };
+        s.ladderLabels = { "100", "75", "50", "25", "10" };
+        const auto numBands = [&p] { return juce::jlimit (1, Mars::maxBands, juce::roundToInt (valueOf (p, marsBands)) + 1); };
+        s.ladderReading = [&p, numBands]
+        {
+            if (valueOf (p, marsOn) < 0.5f)
+                return -100.0f;
+            float most = 0.0f;
+            for (int b = 0; b < numBands(); ++b)
+                most = juce::jmax (most, p.getMarsDrive (b));
+            return most;
+        };
+        s.paintReadout = [&p, numBands] (juce::Graphics& g, juce::Rectangle<float> glass)
+        {
+            // Each band a column: its style, a glow as hard as it's being driven, its DRIVE.
+            auto content = glass.reduced (glass.getWidth() * 0.035f, glass.getHeight() * 0.12f);
+            const auto on = valueOf (p, marsOn) > 0.5f;
+            const auto n = numBands();
+            const auto w = content.getWidth() / (float) n;
+            for (int b = 0; b < n; ++b)
+            {
+                auto band = content.withX (content.getX() + w * (float) b).withWidth (w).reduced (3.0f, 0.0f);
+                if (b > 0)
+                {
+                    g.setColour (orange.withAlpha (0.35f));
+                    g.drawVerticalLine (juce::roundToInt (band.getX() - 3.0f), content.getY(), content.getBottom());
+                }
+                const auto bandOn = valueOf (p, marsBand (b, "On").toRawUTF8()) > 0.5f;
+                const auto style = juce::jlimit (0, Mars::numStyles - 1, juce::roundToInt (valueOf (p, marsBand (b, "Style").toRawUTF8())));
+                line (g, bandOn ? Mars::styleNames[style].toUpperCase() : juce::String ("CLEAN"), band.removeFromTop (band.getHeight() * 0.28f),
+                      band.getHeight() * 0.2f);
+                const auto heat = on && bandOn ? juce::jlimit (0.0f, 1.0f, p.getMarsDrive (b)) : 0.0f;
+                const auto glow = band.removeFromTop (band.getHeight() * 0.62f).withSizeKeepingCentre (band.getHeight() * 0.5f, band.getHeight() * 0.5f);
+                g.setGradientFill (juce::ColourGradient (orange.withAlpha (0.85f * heat + 0.08f), glow.getCentre(), orange.withAlpha (0.0f),
+                                                         glow.getCentre().translated (glow.getWidth() * 0.7f, 0.0f), true));
+                g.fillEllipse (glow.expanded (glow.getWidth() * 0.3f));
+                bar (g, band.withHeight (band.getHeight() * 0.4f).withY (band.getY() + band.getHeight() * 0.3f),
+                     bandOn ? valueOf (p, marsBand (b, "Drive").toRawUTF8()) : 0.0f);
+            }
+        };
+        s.footTitle = "PRESET";
+        s.footText = [&p] { return p.getMarsPresetName() + (p.isMarsPresetModified() ? " *" : ""); };
+        s.onEdit = [actions] { actions.openPage (3); };
+    }
+
+    //==========================================================================
+    // BINARY (0.22.0; stereo* in the code)
+    {
+        auto& s = specs[4];
+        s.number = 5;
+        s.name = "BINARY";
+        s.kind = "STEREO IMAGE  MONO MAKER";
+        s.series = "PR7-X SERIES  MONO SAFE";
+        s.onParameterIds = { stereoOn };
+        s.powerTooltip = "BINARY (the stereo tools) on or off. Click POWER (the word) or EDIT for its page";
+        s.keys[0] = { "MONO LOW", "MONO MAKER: everything below MONO BELOW to the middle",
+                      [&p] { return valueOf (p, stereoMonoOn) > 0.5f; }, [&p] { toggle (p, stereoMonoOn); } };
+        s.keys[1] = { "WIDTH", "WIDTH: narrows or widens the image",
+                      [&p] { return valueOf (p, stereoWidthOn) > 0.5f; }, [&p] { toggle (p, stereoWidthOn); } };
+        s.keys[2] = { "MONO", "Listen to everything in mono, to check it (not saved in rigs)",
+                      [&p] { return valueOf (p, stereoListenMono) > 0.5f; }, [&p] { toggle (p, stereoListenMono); } };
+        s.knobs = { RackUnit::Knob { stereoMonoFreq, "MONO BELOW" }, RackUnit::Knob { stereoWidth, "WIDTH" } };
+        s.ladderTitle = "CORR";
+        s.ladderMarks = { 0.9f, 0.5f, 0.0f, -0.5f, -1.0f };
+        s.ladderLabels = { "+1", ".5", "0", "-.5", "-1" };
+        s.ladderReading = [&p] { return p.getStereoCorrelation(); };
+        s.paintReadout = [&p] (juce::Graphics& g, juce::Rectangle<float> glass)
+        {
+            auto content = glass.reduced (glass.getWidth() * 0.045f, glass.getHeight() * 0.14f);
+            auto left = content.removeFromLeft (content.getWidth() * 0.5f);
+            const auto on = valueOf (p, stereoOn) > 0.5f;
+            const auto widthOn = on && valueOf (p, stereoWidthOn) > 0.5f;
+            const auto h = left.getHeight() * 0.5f;
+            const auto end = drawNumber (g, juce::String (juce::roundToInt (widthOn ? valueOf (p, stereoWidth) : 100.0f)), left.getTopLeft(), h);
+            line (g, "% WIDTH", { end + 6.0f, left.getY(), left.getRight() - end, h * 0.5f }, h * 0.24f);
+
+            // The correlation: -1 to +1, filled from the middle.
+            auto meter = left.withTop (left.getBottom() - left.getHeight() * 0.3f).withTrimmedRight (left.getWidth() * 0.06f);
+            auto scale = meter.removeFromTop (meter.getHeight() * 0.5f);
+            g.setColour (orange);
+            g.setFont (juce::FontOptions (scale.getHeight() * 0.8f));
+            g.drawText ("-1", scale, juce::Justification::centredLeft, false);
+            g.drawText ("0", scale, juce::Justification::centred, false);
+            g.drawText ("+1", scale, juce::Justification::centredRight, false);
+            const auto bar = meter.reduced (0.0f, meter.getHeight() * 0.25f);
+            g.setColour (orange.withAlpha (0.2f));
+            g.fillRect (bar);
+            const auto correlation = juce::jlimit (-1.0f, 1.0f, p.getStereoCorrelation());
+            const auto mid = bar.getCentreX(), to = bar.getX() + (correlation + 1.0f) * 0.5f * bar.getWidth();
+            g.setGradientFill (ParagonLookAndFeel::menuHighlight (bar));
+            g.fillRect (juce::Rectangle<float> (juce::jmin (mid, to), bar.getY(), std::abs (to - mid), bar.getHeight()));
+
+            const auto monoOn = on && valueOf (p, stereoMonoOn) > 0.5f;
+            column (g, content, { monoOn ? "MONO BELOW " + textOf (p, stereoMonoFreq).toUpperCase() : juce::String ("MONO MAKER OFF"),
+                                  "CORRELATION " + juce::String (correlation >= 0.0f ? "+" : "") + juce::String (correlation, 2),
+                                  valueOf (p, stereoListenMono) > 0.5f ? "LISTENING IN MONO" : "STEREO" },
+                    content.getHeight() * 0.16f);
+        };
+        s.footTitle = "IMAGE";
+        s.footText = [&p]
+        {
+            if (valueOf (p, stereoOn) < 0.5f)
+                return juce::String ("OFF");
+            const auto correlation = p.getStereoCorrelation();
+            return juce::String (correlation < 0.0f ? "PHASE!" : correlation > 0.95f ? "MONO" : "STEREO");
+        };
+        s.onEdit = [actions] { actions.openPage (4); };
+    }
+
+    //==========================================================================
+    // LIMITER
+    {
+        auto& s = specs[5];
+        s.number = 6;
         s.name = "GUILLOTINE";
         s.kind = "TRUE PEAK LIMITER";
         s.series = "PR7-X SERIES  LOUDNESS";
@@ -346,7 +473,7 @@ std::array<RackUnit::Spec, 4> makeRackSpecs (ParagonX1AudioProcessor& p, RackAct
         };
         s.footTitle = "PRESET";   // its style is on the screen (STYLE here until 0.19.0)
         s.footText = [&p] { return p.getLimiterPresetName() + (p.isLimiterPresetModified() ? " *" : ""); };
-        s.onEdit = [actions] { actions.openPage (3); };
+        s.onEdit = [actions] { actions.openPage (5); };
     }
     return specs;
 }

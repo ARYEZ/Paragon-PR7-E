@@ -49,6 +49,17 @@ namespace
         return mockF (switchLeft - 2, switchRowY[row] - 8, switchLeft + 7.0f * switchPitch + 2, switchRowY[row] + switchHeight + 6);
     }
 
+    // Since 0.22.0, six rack units share the four rows' height (the owner's
+    // Option A): each a little shorter, in the chain's order.
+    constexpr int numRackRows = 6;
+    juce::Rectangle<float> rackRow (int row)
+    {
+        const auto top = rowPanel (0).getY(), bottom = rowPanel (3).getBottom();
+        const auto gap = 4.0f * mockScale;
+        const auto h = (bottom - top - gap * (float) (numRackRows - 1)) / (float) numRackRows;
+        return rowPanel (0).withY (top + (h + gap) * (float) row).withHeight (h);
+    }
+
     void styleInkLabel (juce::Label& label, float size)
     {
         label.setFont (juce::FontOptions (size, juce::Font::bold));
@@ -134,17 +145,21 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
       // Each block in the red to pink to orange of the menus and DOMINION's
       // and ORACLE's pages, by its place in the chain: red first, orange last.
       signalChain (processorToShow.getParameters(), {
-          { "ECHELON", Icons::Type::eq, chainColour (0, 4), ParamIDs::eqOn },
-          { "DOMINION", Icons::Type::filterPitch, chainColour (1, 4), ParamIDs::domOn },
-          { "CONSTRICTOR", Icons::Type::comp, chainColour (2, 4), ParamIDs::compOn },
-          { "GUILLOTINE", Icons::Type::comp, chainColour (3, 4), ParamIDs::limitOn } }),
+          { "ECHELON", Icons::Type::eq, chainColour (0, 6), ParamIDs::eqOn },
+          { "DOMINION", Icons::Type::filterPitch, chainColour (1, 6), ParamIDs::domOn },
+          { "CONSTRICTOR", Icons::Type::comp, chainColour (2, 6), ParamIDs::compOn },
+          { "MARS", Icons::Type::drive, chainColour (3, 6), ParamIDs::marsOn },
+          { "BINARY", Icons::Type::modulation, chainColour (4, 6), ParamIDs::stereoOn },
+          { "GUILLOTINE", Icons::Type::comp, chainColour (5, 6), ParamIDs::limitOn } }),
       rigBrowser (processorToShow),
       settingsPage (processorToShow),
       eqPage (processorToShow),
       dominionPage (processorToShow),
       oraclePage (processorToShow),
       compPage (processorToShow),
-      limiterPage (processorToShow)
+      limiterPage (processorToShow),
+      marsPage (processorToShow),
+      stereoPage (processorToShow)
 {
     auto& state = processorToShow.getParameters();
 
@@ -233,11 +248,11 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
         refreshRig();
     };
 
-    // The four rack units, one to a row, in the signal chain's order.
+    // The six rack units, one to a row, in the signal chain's order.
     RackActions actions;
     actions.openPage = [this] (int unit)
     {
-        constexpr Page pages[] = { Page::eq, Page::dominion, Page::comp, Page::limiter };
+        constexpr Page pages[] = { Page::eq, Page::dominion, Page::comp, Page::mars, Page::stereo, Page::limiter };
         showPage (pages[unit]);
     };
     actions.openMatch = [this]
@@ -270,6 +285,10 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
     addChildComponent (compPage);
     limiterPage.onClose = [this] { showPage (Page::processor); };
     addChildComponent (limiterPage);
+    marsPage.onClose = [this] { showPage (Page::processor); };
+    addChildComponent (marsPage);
+    stereoPage.onClose = [this] { showPage (Page::processor); };
+    addChildComponent (stereoPage);
 
     signalChain.onSelect = [this] (int block)
     {
@@ -279,6 +298,10 @@ MainView::MainView (ParagonX1AudioProcessor& processorToShow)
             showPage (Page::comp);
         else if (block == limiterBlock)
             showPage (Page::limiter);
+        else if (block == marsBlock)
+            showPage (Page::mars);
+        else if (block == stereoBlock)
+            showPage (Page::stereo);
         else if (block == eqBlock)
             showPage (Page::eq);
         else
@@ -347,6 +370,10 @@ void MainView::showPage (Page newPage)
     if (newPage == Page::comp)
         compPage.getDisplay().grabKeyboardFocus();
     limiterPage.setVisible (newPage == Page::limiter);
+    marsPage.setVisible (newPage == Page::mars);
+    if (newPage == Page::mars)
+        marsPage.getDisplay().grabKeyboardFocus();
+    stereoPage.setVisible (newPage == Page::stereo);
     oraclePage.setVisible (newPage == Page::oracle);
     if (newPage == Page::oracle)
         oraclePage.getRoll().grabKeyboardFocus();
@@ -527,7 +554,7 @@ void MainView::resized()
     // The face plate sits inside the rim with the same rim showing all round.
     geometry.face = local (mockF (faceLeft, 94, faceRight, faceBottom));
     for (int row = 0; row < (int) racks.size(); ++row)   // a raised panel for each row, its rack unit on it
-        geometry.sections.push_back (local (rowPanel (row)));
+        geometry.sections.push_back (local (rackRow (row)));
     geometry.badge = local (mockF (196, 117, 394, 207));
 
     // The display centred along the top, as on the GSP21's controller, with
@@ -561,9 +588,9 @@ void MainView::resized()
     presenceKnob.setBounds (mock (1383, 98, 1497, 212));
     presenceLabel.setBounds (mock (1380, 196, 1500, 214));
 
-    // The four rack units, each on its row's panel.
+    // The six rack units, each on its row's panel.
     for (size_t i = 0; i < racks.size(); ++i)
-        racks[i]->setBounds (rowPanel ((int) i).toNearestInt());
+        racks[i]->setBounds (rackRow ((int) i).toNearestInt());
 
     signalChain.setBounds (mock (12, 832, 1662, 930));
 
@@ -576,4 +603,6 @@ void MainView::resized()
     oraclePage.setBounds (pageArea);
     compPage.setBounds (pageArea);
     limiterPage.setBounds (pageArea);
+    marsPage.setBounds (pageArea);
+    stereoPage.setBounds (pageArea);
 }
