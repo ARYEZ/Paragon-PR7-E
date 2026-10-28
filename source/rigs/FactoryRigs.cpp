@@ -9,8 +9,10 @@
 #include "dsp/eq/EqDesign.h"
 
 // PR7-X's factory rigs (0.6.0): starting points for the EQ stomp, filed by
-// what they're for. Bank A: vocals and voice; B: drums; C: bass, guitars
-// and keys; D: the full mix; E: mastering.
+// what they're for. Since 0.21.0 (the owner's layout): A drums, B bass,
+// C guitars, D synths and keys, E vocals and voice, F the full mix, G
+// mastering (before, five banks: A vocals, B drums, C bass, guitars and
+// keys, D mix, E mastering; the rigs kept their numbers when they moved).
 //
 // They're common mixing moves (cut the mud, add presence and air, tame
 // sibilance and boom), not copies of anyone's presets, and every track is
@@ -103,11 +105,12 @@ namespace
         return rig;
     }
 
-    constexpr int vocals = 0, drums = 1, instruments = 2, mix = 3, mastering = 4;
+    // The banks (0.21.0): A drums, B bass, C guitars, D synths and keys, E vocals, F mix, G mastering.
+    constexpr int drums = Rig::drums, bassBank = Rig::bass, guitarBank = Rig::guitars, synths = Rig::synths, vocals = Rig::vocals,
+                  mix = Rig::mix, mastering = Rig::master;
 
     // A genre's rigs (0.15.0): one for each part of a song, at the same
-    // number in each bank (x11 to x19, a genre each; bass at C21 to C29,
-    // after the guitars). Each takes COMP's and DOMINION's settings from the
+    // number in each bank (x11 to x19, a genre each). Each takes COMP's and DOMINION's settings from the
     // genre's presets of the same name, so a stomp's preset menu holds
     // exactly what the rig has: COMP on the vocal, drums, bass, mix and
     // master; DOMINION on the vocal, guitars and mix.
@@ -132,26 +135,26 @@ namespace
     }
 
     // A set of six rigs, one for each part of a song: a genre's (0.15.0, at
-    // x11 to x19, bass C21 to C29) or a signature sound's (0.19.0, at x31 to
-    // x38, bass C41 to C48, with a LIMITER preset on the master too).
-    struct SetKind { const char* group; const char* tag; int first, bassFirst; bool limiter; };
-    const SetKind genreSet { "Genres", "Genre", 11, 21, false }, signatureSet { "Signature Sounds", "Signature", 31, 41, true };
+    // x11 to x19) or a signature sound's (0.19.0, at x31 to x38, with a
+    // LIMITER preset on the master too), one part in each bank.
+    struct SetKind { const char* group; const char* tag; int first; bool limiter; };
+    const SetKind genreSet { "Genres", "Genre", 11, false }, signatureSet { "Signature Sounds", "Signature", 31, true };
 
     void addSet (std::vector<Rig>& rigs, const SetKind& kind, int index, const juce::String& name, const GenrePart& vocal, const GenrePart& drumBus,
                  const GenrePart& guitars, const GenrePart& bass, const GenrePart& mixBus, const GenrePart& master)
     {
-        struct Part { const GenrePart& spec; const char* name; int bank; bool isBass; const char* tag; const char* comp; const char* dominion; };
+        struct Part { const GenrePart& spec; const char* name; int bank; const char* tag; const char* comp; const char* dominion; };
         const Part parts[] = {
-            { vocal,   "Vocal",   vocals,      false, "Vocal",     "Vocal",   "Vocal" },
-            { drumBus, "Drums",   drums,       false, "Drums",     "Drums",   nullptr },
-            { guitars, "Guitars", instruments, false, "Guitar",    nullptr,   "Guitars" },
-            { bass,    "Bass",    instruments, true,  "Bass",      "Bass",    nullptr },
-            { mixBus,  "Mix",     mix,         false, "Mix",       "Mix Bus", "Mix" },
-            { master,  "Master",  mastering,   false, "Mastering", "Master",  nullptr },
+            { vocal,   "Vocal",   vocals,     "Vocal",     "Vocal",   "Vocal" },
+            { drumBus, "Drums",   drums,      "Drums",     "Drums",   nullptr },
+            { guitars, "Guitars", guitarBank, "Guitar",    nullptr,   "Guitars" },
+            { bass,    "Bass",    bassBank,   "Bass",      "Bass",    nullptr },
+            { mixBus,  "Mix",     mix,        "Mix",       "Mix Bus", "Mix" },
+            { master,  "Master",  mastering,  "Mastering", "Master",  nullptr },
         };
         for (const auto& part : parts)
         {
-            auto rig = makeRig (name + " " + part.name, part.bank, (part.isBass ? kind.bassFirst : kind.first) + index, { name, part.tag, kind.tag },
+            auto rig = makeRig (name + " " + part.name, part.bank, kind.first + index, { name, part.tag, kind.tag },
                                 part.spec.notes, part.spec.bands);
             if (part.comp != nullptr)
             {
@@ -247,24 +250,24 @@ std::vector<Rig> makeFactoryRigs()
           shelf (Shape::highShelf, 12000.0, 1.5) }));
 
     // C: bass, guitars and keys
-    rigs.push_back (makeRig ("Bass DI", instruments, 1, { "Bass" },
+    rigs.push_back (makeRig ("Bass DI", bassBank, 1, { "Bass" },
         "A direct bass: an even bottom (boomy notes come down, at 70 Hz), less mud at 250 Hz, a little growl at 800 Hz.",
         { cut (Shape::lowCut, 35.0, 24), dynamic (bell (70.0, 1.5, 1.4), -4.0), bell (250.0, -3.0, 1.2), bell (800.0, 1.5, 1.0) }));
-    rigs.push_back (makeRig ("808 Control", instruments, 2, { "Bass", "808", "Dynamic" },
+    rigs.push_back (makeRig ("808 Control", bassBank, 2, { "Bass", "808", "Dynamic" },
         "Evens out an 808 whose notes boom unevenly, and lifts its upper harmonics (1.2 kHz) so it's heard on small speakers.",
         { cut (Shape::lowCut, 25.0, 24), dynamic (bell (55.0, 2.0, 1.0), -5.0), bell (1200.0, 2.0, 1.0),
           cut (Shape::highCut, 8000.0, 12) }));
-    rigs.push_back (makeRig ("Electric Guitar", instruments, 3, { "Guitar", "Electric" },
+    rigs.push_back (makeRig ("Electric Guitar", guitarBank, 3, { "Guitar", "Electric" },
         "Makes room in a mix: no low end below 90 Hz, less mud, a little bite at 2.5 kHz, and the fizz above 11 kHz rolled off.",
         { cut (Shape::lowCut, 90.0, 18), bell (400.0, -2.0, 1.2), bell (2500.0, 1.5, 1.0), cut (Shape::highCut, 11000.0, 12) }));
-    rigs.push_back (makeRig ("Acoustic Guitar", instruments, 4, { "Guitar", "Acoustic" },
+    rigs.push_back (makeRig ("Acoustic Guitar", guitarBank, 4, { "Guitar", "Acoustic" },
         "Body boom (200 Hz) comes down when it builds up, a less honky middle, more sparkle.",
         { cut (Shape::lowCut, 80.0, 18), dynamic (bell (200.0, 0.0, 1.2), -5.0), bell (1000.0, -1.0, 1.0), bell (5000.0, 2.0, 0.9),
           shelf (Shape::highShelf, 11000.0, 2.0) }));
-    rigs.push_back (makeRig ("Piano", instruments, 5, { "Keys", "Piano" },
+    rigs.push_back (makeRig ("Piano", synths, 5, { "Keys", "Piano" },
         "Clearer in a mix: less low-mid muddiness, a little presence and air.",
         { cut (Shape::lowCut, 40.0, 18), bell (300.0, -2.0, 1.0), bell (3000.0, 1.5, 0.8), shelf (Shape::highShelf, 10000.0, 1.5) }));
-    rigs.push_back (makeRig ("Pad, Make Room", instruments, 6, { "Keys", "Synth", "Pad" },
+    rigs.push_back (makeRig ("Pad, Make Room", synths, 6, { "Keys", "Synth", "Pad" },
         "Pushes a pad or keys behind the song: the lows cut, and a dip around 2.5 kHz leaves room for a vocal.",
         { cut (Shape::lowCut, 150.0, 18), bell (2500.0, -2.5, 0.8), shelf (Shape::highShelf, 9000.0, -1.5) }));
 
@@ -631,7 +634,7 @@ std::vector<Rig> makeFactoryRigs()
           { cut (S::lowCut, 18.0, 24), shelf (S::lowShelf, 60.0, 1.0), bell (300.0, -1.0, 0.7), shelf (S::highShelf, 12000.0, 1.0) } });
 
     // More starting points (0.19.0, the owner's ask): one per source (x51
-    // on), one-job fixes (x71 on) and mastering targets (E51 on). Each uses
+    // on), one-job fixes (x71 on) and mastering targets (G51 on). Each uses
     // CONSTRICTOR's, DOMINION's or the LIMITER's preset of the same purpose,
     // so a stomp's PRESET menu shows what the rig has.
     const auto add = [&rigs] (const juce::String& name, int bank, int number, const juce::StringArray& tags, const juce::String& notes,
@@ -693,34 +696,34 @@ std::vector<Rig> makeFactoryRigs()
          { cut (S::lowCut, 25.0, 24), bell (50.0, 2.0, 1.0), bell (300.0, -2.0, 1.0), bell (5000.0, 1.5, 1.0), shelf (S::highShelf, 12000.0, 1.5) },
          "Drum Bus Glue");
 
-    // Sources: instruments
-    add ("Rhythm Guitar High Gain", instruments, 51, { "Guitar", "Electric", "High gain" },
+    // Sources: bass, guitars, synths and keys
+    add ("Rhythm Guitar High Gain", guitarBank, 51, { "Guitar", "Electric", "High gain" },
          "Distorted rhythm guitars: the lows left to the bass, chug boom caught, less mud, the fizz rolled off.",
          { cut (S::lowCut, 90.0, 24), dynamic (bell (180.0, 0.0, 1.2), -4.0), bell (450.0, -2.0, 1.0), bell (3000.0, 1.0, 1.0),
            cut (S::highCut, 10000.0, 18) },
          "Rhythm Guitar Tight", "Rhythm Guitar Whistle");
-    add ("Lead Guitar", instruments, 52, { "Guitar", "Electric", "Lead" },
+    add ("Lead Guitar", guitarBank, 52, { "Guitar", "Electric", "Lead" },
          "Solos: thinner at the bottom, a little more voice at 1.5 kHz, smooth on top, sustain evened out.",
          { cut (S::lowCut, 120.0, 24), bell (1500.0, 2.0, 1.0), cut (S::highCut, 9000.0, 12) },
          "Lead Guitar Sustain", "Electric Guitar Fizz");
-    add ("Clean Guitar", instruments, 53, { "Guitar", "Electric", "Clean" },
+    add ("Clean Guitar", guitarBank, 53, { "Guitar", "Electric", "Clean" },
          "Clean electric guitar: low rumble out, a little less boom, sparkle on top.",
          { cut (S::lowCut, 80.0, 18), bell (250.0, -1.5, 1.0), shelf (S::highShelf, 8000.0, 2.0) },
          "Acoustic Even");
-    add ("Distorted Bass", instruments, 54, { "Bass", "Distorted" },
+    add ("Distorted Bass", bassBank, 54, { "Bass", "Distorted" },
          "Bass with grit: an even bottom, the mud cut, the growl at 1.2 kHz, the fizz above 6 kHz rolled off.",
          { cut (S::lowCut, 35.0, 24), dynamic (bell (70.0, 0.0, 1.4), -3.0), bell (300.0, -3.0, 1.2), bell (1200.0, 2.0, 1.0),
            cut (S::highCut, 6000.0, 12) },
          "Bass Even", "Bass Smoother");
-    add ("Synth Lead", instruments, 55, { "Keys", "Synth", "Lead" },
+    add ("Synth Lead", synths, 55, { "Keys", "Synth", "Lead" },
          "A synth lead: the lows out of the way, presence, its harsh resonances smoothed.",
          { cut (S::lowCut, 150.0, 24), bell (2500.0, 1.5, 1.0) },
          nullptr, "Synth Lead Harsh");
-    add ("Strings & Orchestra", instruments, 56, { "Keys", "Strings", "Orchestra" },
+    add ("Strings & Orchestra", synths, 56, { "Keys", "Strings", "Orchestra" },
          "Orchestral strings and samples: rumble out, less low-mid build-up, air.",
          { cut (S::lowCut, 60.0, 18), bell (300.0, -2.0, 0.8), shelf (S::highShelf, 10000.0, 2.0) },
          "Synth Pad Glue");
-    add ("Organ & Electric Piano", instruments, 57, { "Keys", "Organ", "Electric piano" },
+    add ("Organ & Electric Piano", synths, 57, { "Keys", "Organ", "Electric piano" },
          "Organs and electric pianos: rumble and mud out, a little bark at 1 kHz.",
          { cut (S::lowCut, 70.0, 18), bell (250.0, -2.0, 1.0), bell (1000.0, 1.5, 1.0), cut (S::highCut, 12000.0, 12) },
          "Piano & Keys Even");
@@ -744,13 +747,13 @@ std::vector<Rig> makeFactoryRigs()
     add ("Fix: Cymbal Wash", drums, 73, { "Drums", "Cymbals", "Fix" },
          "Washy, harsh cymbals: the highs turned down when the crashes pile up.",
          { dynamic (shelf (S::highShelf, 6000.0, 0.0), -4.0) }, "Hi-Hat Tame", "Cymbal Wash");
-    add ("Fix: Honky Guitar", instruments, 71, { "Guitar", "Fix", "Honk" },
+    add ("Fix: Honky Guitar", guitarBank, 71, { "Guitar", "Fix", "Honk" },
          "A honky guitar: the honk round 800 Hz turned down when it sticks out.",
          { dynamic (bell (800.0, -1.0, 1.4), -4.0) }, "Honk Control", "Nasal Honk");
-    add ("Fix: Guitar Fizz", instruments, 72, { "Guitar", "Fix", "Fizz" },
+    add ("Fix: Guitar Fizz", guitarBank, 72, { "Guitar", "Fix", "Fizz" },
          "Fizzy distorted guitars: the fizz above 6 kHz smoothed and rolled off.",
          { cut (S::highCut, 11000.0, 12), dynamic (shelf (S::highShelf, 6000.0, 0.0), -4.0) }, "Fizz Control", "Fizz");
-    add ("Fix: Muddy Bass", instruments, 73, { "Bass", "Fix", "Mud" },
+    add ("Fix: Muddy Bass", bassBank, 73, { "Bass", "Fix", "Mud" },
          "A muddy bass: 250 Hz cut, and turned down further when it piles up.",
          { cut (S::lowCut, 30.0, 24), bell (250.0, -2.0, 1.0), dynamic (bell (250.0, 0.0, 1.2), -3.0) }, "De-Mud", "De-Mud");
     add ("Fix: Boomy Low End", mix, 71, { "Mix", "Fix", "Boom" },
@@ -782,7 +785,7 @@ std::vector<Rig> makeFactoryRigs()
          "Vinyl-friendly: no rumble, the very top tamed when it gets sharp, a -3 dBTP ceiling and DC filter, gently limited.",
          { cut (S::lowCut, 25.0, 24), dynamic (shelf (S::highShelf, 8000.0, 0.0), -2.0) }, nullptr, nullptr, "Vinyl Safe");
     add ("Master Podcast", mastering, 57, { "Mastering", "Podcast", "Voice" },
-         "A finished podcast or voice-over at -16 LUFS: rumble out, clarity, -1.5 dBTP (for the voice itself, Podcast Voice at A54).",
+         "A finished podcast or voice-over at -16 LUFS: rumble out, clarity, -1.5 dBTP (for the voice itself, Podcast Voice at E54).",
          { cut (S::lowCut, 30.0, 24), bell (3000.0, 1.0, 1.0) }, nullptr, nullptr, "Podcast (-16 LUFS)");
     add ("Master Broadcast R128", mastering, 58, { "Mastering", "Broadcast" },
          "For TV and radio in Europe (EBU R128): -23 LUFS, -1 dBTP. Usually means turning it down (TRIM or the mix), not up.",

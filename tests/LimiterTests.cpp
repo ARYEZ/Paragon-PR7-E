@@ -263,7 +263,7 @@ TEST_CASE ("Limiter in PR7-X: the mastering factory rigs hold their ceiling (-1 
 {
     for (const auto& rig : makeFactoryRigs())
     {
-        if (rig.bank != 4)   // E: mastering
+        if (rig.bank != Rig::master)   // G: mastering
             continue;
         INFO (rig.name);
         ParagonX1AudioProcessor processor;

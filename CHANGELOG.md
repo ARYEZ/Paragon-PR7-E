@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.21.0
+
+- **The rigs are filed in seven banks, as you asked:** **A** drums, **B** bass, **C** guitars, **D** synths and keys, **E** vocals, **F** mix, **G** master. The PRESETS browser lists them by name ("A Drums" to "G Master"), and so does the bank picker when you save a rig.
+  - Every factory rig kept its number and moved to its bank. So the genres are still at x11 to x19 and the signature sounds at x31 to x38, now in every bank including bass (e.g. B11 is the modern metal bass, which was C21). Per-source rigs are still at x51 on, fixes at x71 on, and the mastering targets at G51 on.
+  - **Init** (everything off) stays where it was, first among the vocals, now **E01**.
+  - **Your own saved rigs move with their contents:** old A (vocals) to E, old B (drums) to A, old D (mix) to F, old E (master) to G. Old C held bass, guitars and keys together, so each of those goes by its tags: "Bass" or "808" to B, "Keys", "Synth", "Piano", "Pad", "Organ" or "Strings" to D, anything else to C (guitars). If one lands in the wrong bank, pick the right one in the browser and press SAVE DETAILS.
+- **The signal chain is centred** under the unit. With four blocks it sat all the way to the left; now it's in the middle, with the line running out to the guitar and OUTPUT on either side.
+
 ## 0.20.0
 
 - **PR7-E is now Paragon PR7-X,** as you asked: on the unit's badge (an X drawn in the same slanted, speed-cut lettering as the rest of the mark), the header, the rack units' "PR7-X SERIES" lines, the ABOUT text, and the plugin's name in your DAW.
