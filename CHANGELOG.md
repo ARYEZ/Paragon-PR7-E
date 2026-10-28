@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.22.1
+
+- **Every master rig is now the whole rack, as you asked:** MARS and BINARY belong in a full mastering chain, so all 32 master rigs (bank G) run all six units: ECHELON, DOMINION, CONSTRICTOR, MARS, BINARY and GUILLOTINE. No other rig uses MARS or BINARY.
+  - **MARS** adds a little colour, with a mastering preset chosen for each rig: Tape Warmth on the classic ones (Gentle Polish, Hard Rock, Grunge, Streaming, CD), Three-Band Master on the dense ones (modern metal, metalcore, industrial, Loud Club), Transformer Weight for weight, Tube Glow for the open and gentle ones, Clean Lows, Warm Top where the low end must stay clean (Djent, Vinyl), and Air Exciter on Master Width.
+  - **BINARY** folds everything below 120 Hz to mono (150 Hz on the vinyl master, which needs mono lows to cut cleanly), so the low end stays tight and centred. The stereo width is left as it was.
+  - **DOMINION** ("Master Polish", very gentle) is now on every master, and **CONSTRICTOR** ("Master Four Bands") on the masters that didn't have one. The genre and signature masters keep their own CONSTRICTOR presets.
+- **Same loudness as before.** The added units take a little level (CONSTRICTOR's bands about 2 dB on a dense mix, MARS up to about 1 dB), so each master's **RIG LEVEL** makes it up before GUILLOTINE. GUILLOTINE is driven as hard as before, and every master rig is within 0.5 dB of its old loudness on a mix-like test signal (tested).
+- **Three things to know:**
+  - These master rigs sound different from before: more polished, with the mono low end. These are my own choices, set by measurement, not tuned by ear, so please listen.
+  - The plain and target masters now have CONSTRICTOR's look-ahead, which delays the sound by 20 ms. Your DAW makes up for it automatically.
+  - **The full rack costs more processing power:** a master rig now uses about 22 to 36% of one CPU core on this server, up from 5 to 10%. It's mostly DOMINION (about 11%) and MARS at its best quality, 8x (6 to 15%; Three-Band Master is the heaviest). That's fine for one master bus. If your computer struggles, MARS's **4x** key roughly halves its share, with barely any difference at these gentle settings.
+
 ## 0.22.0
 
 - **Two new rack units, as you asked (Option A: six rows):** the chain is now ECHELON, DOMINION, CONSTRICTOR, **MARS**, **BINARY**, GUILLOTINE. The six units share the height the four had, each a little shorter, and the signal chain under them has six blocks.
