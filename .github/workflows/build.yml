@@ -1,0 +1,102 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: PyInstaller with a starter built here (not the shared prebuilt one Defender distrusts)
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          $v = python -c "import PyInstaller; print(PyInstaller.__version__)"
+          pip install --force-reinstall --no-deps --no-cache-dir --no-binary pyinstaller "pyinstaller==$v"
+          if ($LASTEXITCODE -ne 0) { throw "building PyInstaller's bootloader failed" }
+          python -c "import PyInstaller, os; d = os.path.join(os.path.dirname(PyInstaller.__file__), 'bootloader', 'Windows-64bit-intel'); print(d, sorted(os.listdir(d)))"
+      - name: Tests (real files, the real Recycle Bin for the Windows trash test)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q -rs
+      - name: Build PR7-E.exe
+        run: pyinstaller --noconfirm pr7e.spec
+      - name: Check the build
+        shell: pwsh
+        run: |
+          foreach ($f in "dist/PR7-E/PR7-E.exe", "dist/PR7-E/_internal/pr7e/fonts/Inter-Regular.ttf",
+                         "dist/PR7-E/_internal/pr7e/icons/app.ico") {
+            if (-not (Test-Path $f)) { throw "missing $f" }
+          }
+          $vi = (Get-Item dist/PR7-E/PR7-E.exe).VersionInfo
+          "File details: $($vi.ProductName) $($vi.ProductVersion), $($vi.CompanyName), $($vi.FileDescription)"
+          if ($vi.ProductName -ne "Paragon PR7-E" -or -not $vi.ProductVersion) { throw "the .exe has no file details" }
+          Copy-Item README.md, NOTICE.md dist/PR7-E/
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/PR7-E -DestinationPath "PR7-E-${{ github.ref_name }}-windows-x64.zip".Replace('/', '-')
+      - name: Build the installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path pr7e/__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /DAppVersion=$v installer/pr7e.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          "PR7E_VERSION=$v" >> $env:GITHUB_ENV
+      - name: Scan the build with Microsoft Defender
+        shell: pwsh
+        run: |
+          $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $mp)) { Write-Warning "Defender isn't on this runner: no scan"; exit 0 }
+          & $mp -SignatureUpdate | Out-Host
+          foreach ($t in (Resolve-Path dist\PR7-E).Path, (Get-Item dist\PR7-E-Setup-*.exe).FullName) {
+            & $mp -Scan -ScanType 3 -File $t -DisableRemediation | Out-Host
+            if ($LASTEXITCODE -eq 2) { throw "Defender flags $t" }
+            if ($LASTEXITCODE -ne 0) { Write-Warning "Defender scan of $t ended with $LASTEXITCODE" }
+          }
+          exit 0
+      - name: Test the installer (silent install, check, uninstall, check)
+        shell: pwsh
+        run: |
+          $p = Start-Process "dist/PR7-E-Setup-$env:PR7E_VERSION.exe" -Wait -PassThru `
+               -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=install.log"
+          if ($p.ExitCode -ne 0) { Get-Content install.log; throw "install failed: $($p.ExitCode)" }
+          python tools/verify_install.py installed
+          if ($LASTEXITCODE -ne 0) { Get-Content install.log; throw "install check failed" }
+          $p = Start-Process "$env:LOCALAPPDATA\Programs\PR7-E\unins000.exe" -Wait -PassThru `
+               -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+          python tools/verify_install.py uninstalled
+          if ($LASTEXITCODE -ne 0) { throw "uninstall check failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PR7-E-Setup
+          path: dist/PR7-E-Setup-*.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PR7-E-windows-x64
+          path: PR7-E-*.zip
+      - name: Release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/PR7-E-Setup-*.exe
+            PR7-E-*.zip
+          name: Paragon PR7-E ${{ github.ref_name }}

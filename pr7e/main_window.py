@@ -1,739 +1,609 @@
-"""PR7-E's window, laid out the way GNOME Files lays out its window: the sidebar of places on the left; on the
-right the header bar (back, forward, the path bar, search, the view switch, the operations key, the main menu),
-the tab bar (only with two or more tabs), and the folder in grid or list view, with the floating
-"N items selected" label in its corner.
+"""PR7-E's window, working the way GNOME Files works: the sidebar of places; the header bar (back, forward, the
+path bar, search, the view switch, the operations key, the main menu); tabs; the folder in grid or list view with
+the floating selection label. Files' menus, keys, clipboard, drag and drop, Undo / Redo and Trash.
 
-Mock-up stage: the views show the entries they're given; nothing touches the disk yet.
+Anything that asks (rename, replace, delete for good...) goes through `_ask`, which tests replace with `answers`.
 """
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+import os
+import struct
+
+from PySide6.QtCore import QFileSystemWatcher, QItemSelectionModel, QMimeData, QPoint, Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMenu, QStackedWidget,
+                               QVBoxLayout, QWidget)
+
+from . import fs, ops, places, settings, system, theme, trash
+from .views import (EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
+                    SearchFilters, Sidebar, TabStrip, TrashBar)
+from .widgets import Header
+from .workers import Asker, JobRunner, Loader, Search
+
+WINDOWS_EFFECT = 'application/x-qt-windows-mime;value="Preferred DropEffect"'
+GNOME_COPIED = "x-special/gnome-copied-files"
+WINDOWS: list["MainWindow"] = []    # open windows (kept alive here)
+
+
+def pretty(path: str) -> str:
+    """A folder as Files shows it in LOCATION: under Home as "Home/Music/...", else the full path."""
+    home = places.home()
+    if fs.is_inside(path, home):
+        rel = os.path.relpath(path, home)
+        return "Home" if rel == "." else "Home/" + rel.replace("\\", "/")
+    return path
+
+
+class Tab(QWidget):
+    """One tab: its location, its back / forward history, its own model and views (each tab keeps its
+    scroll position and selection), and its search."""
+
+    def __init__(self, window: "MainWindow", location: str):
+        super().__init__()
+        self.window_ = window
+        self.location = location
+        self.back: list[str] = []
+        self.forward: list[str] = []
+        self.model = EntryModel(window.loader, self)
+        self.grid = GridView()
+        self.list = ListView()
+        self.stack = QStackedWidget()
+        for v in (self.grid, self.list):
+            v.setModel(self.model)
+            self.stack.addWidget(v)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.stack)
+        self.search: dict | None = None        # {"text", "when", "what", "root", "generation", "done"}
+        self.error = ""
+
+    @property
+    def view(self):
+        return self.stack.currentWidget()
+
+    def title(self) -> tuple[str, str]:
+        """(icon, title) for the tab bar and the window title."""
+        if self.search is not None and self.search.get("text"):
+            return "search", f"Search for “{self.search['text']}”"
+        if self.location in places.SPECIAL:
+            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network"}[self.location]
+            return icon, places.SPECIAL[self.location]
+        if os.path.normcase(self.location) == os.path.normcase(places.home()):
+            return "home", "Home"
+        d = places.drive_of(self.location, self.window_.drives)
+        if d and os.path.normcase(d.root) == os.path.normcase(self.location):
+            return "usb" if d.removable else "drive", d.label
+        return "folder", os.path.basename(os.path.normpath(self.location)) or self.location
+
+    def selected(self) -> list[fs.Entry]:
+        rows = sorted({i.row() for i in self.view.selectionModel().selectedIndexes()})
+        return [self.model.rows[r] for r in rows if r < len(self.model.rows)]
+
+    def select_paths(self, paths, current: bool = True) -> None:
+        sm = self.view.selectionModel()
+        sm.clearSelection()
+        first = None
+        for p in paths:
+            r = self.model.row_of(p)
+            if r >= 0:
+                idx = self.model.index(r, 0)
+                sm.select(idx, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+                first = first or idx
+        if first is not None and current:
+            sm.setCurrentIndex(first, QItemSelectionModel.NoUpdate)
+            self.view.scrollTo(first)
 
-from PySide6.QtCore import QAbstractListModel, QAbstractTableModel, QModelIndex, QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListView,
-                               QMainWindow, QMenu, QProgressBar, QStackedWidget, QStyle, QStyledItemDelegate,
-                               QTreeView, QVBoxLayout, QWidget)
 
-from . import theme
-from .widgets import Header, SmallKey, draw_icon, file_pixmap, kind_of
-
-
-@dataclass
-class Entry:
-    name: str
-    is_dir: bool = False
-    size: int = 0              # bytes; for folders, the number of items in them (Files shows "12 items")
-    mtime: float = 0.0
-    starred: bool = False
-    thumb: QPixmap | None = None
-    location: str = ""         # search results: the folder it's in, from where the search started
-    kind: str = field(default="")
-
-    def __post_init__(self):
-        self.kind = self.kind or kind_of(self.name, self.is_dir)
-
-
-def selected_text() -> QColor:
-    """Text on the family selection band: white on OBSIDIAN, ink on AURORA (white on light pink can't be read)."""
-    return QColor("#FFFFFF") if theme.FINISH == "obsidian" else QColor(theme.TEXT)
-
-
-def human_size(n: int) -> str:
-    """Files' way: decimal units, one decimal place (4.2 MB, 1.2 GB)."""
-    if n < 1000:
-        return f"{n} bytes" if n != 1 else "1 byte"
-    for unit in ("kB", "MB", "GB", "TB"):
-        n /= 1000
-        if n < 1000 or unit == "TB":
-            return f"{n:.1f} {unit}"
-    return ""
-
-
-def size_text(e: Entry) -> str:
-    if e.is_dir:
-        return f"{e.size} item" if e.size == 1 else f"{e.size} items"
-    return human_size(e.size)
-
-
-def date_text(t: float, now: float | None = None) -> str:
-    """Files' Modified column: the time for today, "Yesterday", the weekday this week, else the date."""
-    now = now or time.time()
-    lt, ln = time.localtime(t), time.localtime(now)
-    days = (time.mktime(ln[:3] + (0, 0, 0, 0, 0, -1)) - time.mktime(lt[:3] + (0, 0, 0, 0, 0, -1))) / 86400
-    if days < 1:
-        return time.strftime("%H:%M", lt)
-    if days < 2:
-        return "Yesterday"
-    if days < 7:
-        return time.strftime("%A", lt)
-    return time.strftime("%d %b %Y", lt).lstrip("0")
-
-
-# --------------------------------------------------------------------------- models (plain Python lists)
-class EntryModel(QAbstractTableModel):
-    """The folder's entries. A plain list model (never QStandardItemModel: PR7-Z's crash on clear())."""
-
-    COLUMNS = ["NAME", "SIZE", "MODIFIED", ""]
-    SEARCH_COLUMNS = ["NAME", "LOCATION", "SIZE", "MODIFIED", ""]
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.rows: list[Entry] = []
-        self.search = False
-
-    def set_rows(self, rows: list[Entry], search: bool = False) -> None:
-        self.beginResetModel()
-        self.rows = list(rows)
-        self.search = search
-        self.endResetModel()
-
-    def columns(self):
-        return self.SEARCH_COLUMNS if self.search else self.COLUMNS
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self.rows)
-
-    def columnCount(self, parent=QModelIndex()):
-        return len(self.columns())
-
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.columns()[section]
-        return None
-
-    def data(self, index, role=Qt.DisplayRole):
-        e = self.rows[index.row()]
-        col = self.columns()[index.column()]
-        if role == Qt.DisplayRole:
-            return {"NAME": e.name, "LOCATION": e.location, "SIZE": size_text(e), "MODIFIED": date_text(e.mtime),
-                    "": ""}[col]
-        if role == Qt.DecorationRole and col == "NAME":
-            return file_pixmap(e.kind, 18)
-        if role == Qt.TextAlignmentRole and col == "SIZE":
-            return int(Qt.AlignRight | Qt.AlignVCenter)
-        if role == Qt.ForegroundRole and col in ("SIZE", "MODIFIED", "LOCATION"):
-            return QColor(theme.TEXT_DIM)
-        if role == Qt.UserRole:
-            return e
-        return None
-
-
-# --------------------------------------------------------------------------- grid view
-class GridDelegate(QStyledItemDelegate):
-    """Files' grid: a big icon or thumbnail, the name under it (two lines at most), a soft family band when
-    selected."""
-
-    def __init__(self, icon: int = 96, parent=None):
-        super().__init__(parent)
-        self.icon = icon
-
-    def sizeHint(self, option, index):
-        return QSize(self.icon + 44, self.icon + 54)
-
-    def paint(self, p: QPainter, option, index):
-        e: Entry = index.data(Qt.UserRole)
-        r = QRectF(option.rect).adjusted(4, 4, -4, -4)
-        selected = bool(option.state & QStyle.State_Selected)
-        hover = bool(option.state & QStyle.State_MouseOver)
-        p.save()
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setRenderHint(QPainter.SmoothPixmapTransform)
-        if selected or hover:
-            p.setPen(QPen(theme.family_gradient(r.left(), 0, r.right(), 0), 1) if selected else Qt.NoPen)
-            p.setBrush(theme.family_gradient(r.left(), 0, r.right(), 0, theme.LIT, 0.22 if selected else 0.07))
-            p.drawRoundedRect(r.adjusted(.5, .5, -.5, -.5), 8, 8)
-        box = QRectF(r.center().x() - self.icon / 2, r.top() + 6, self.icon, self.icon)
-        if e.thumb is not None:
-            pm = e.thumb
-            k = min(box.width() / pm.width(), box.height() / pm.height())
-            w, h = pm.width() * k, pm.height() * k
-            t = QRectF(box.center().x() - w / 2, box.bottom() - h, w, h)  # thumbnails sit on the label
-            clip = QPainterPath()
-            clip.addRoundedRect(t, 4, 4)
-            p.setClipPath(clip)
-            p.drawPixmap(t, pm, QRectF(pm.rect()))
-            p.setClipping(False)
-            p.setPen(QPen(QColor(255, 255, 255, 40), 1))
-            p.setBrush(Qt.NoBrush)
-            p.drawRoundedRect(t.adjusted(.5, .5, -.5, -.5), 4, 4)
-        else:
-            p.drawPixmap(box.toRect(), file_pixmap(e.kind, self.icon))
-        if e.starred:  # on the thumbnail's (or icon's) top-right corner
-            corner = t if e.thumb is not None else box
-            draw_icon(p, "star", QRectF(corner.right() - 13, corner.top() - 5, 18, 18), QColor(theme.BACKGROUND), 1.2,
-                      QColor(theme.LED_ORANGE))
-        f = QFont("Inter")
-        f.setPixelSize(12)
-        p.setFont(f)
-        fm = QFontMetrics(f)
-        text_rect = QRectF(r.left() + 6, box.bottom() + 6, r.width() - 12, 34)
-        lines = _two_lines(e.name, fm, int(text_rect.width()))
-        p.setPen(selected_text() if selected else QColor(theme.TEXT))
-        p.drawText(text_rect, Qt.AlignHCenter | Qt.AlignTop, "\n".join(lines))
-        p.restore()
-
-
-def _two_lines(text: str, fm: QFontMetrics, width: int) -> list[str]:
-    """Wrap at spaces into two lines; the second is elided in the middle, as Files does."""
-    if fm.horizontalAdvance(text) <= width:
-        return [text]
-    words, first = text.split(" "), ""
-    while words and fm.horizontalAdvance((first + " " + words[0]).strip()) <= width:
-        first = (first + " " + words.pop(0)).strip()
-    if not first:  # one long word
-        return [fm.elidedText(text, Qt.ElideMiddle, width)]
-    return [first, fm.elidedText(" ".join(words), Qt.ElideMiddle, width)]
-
-
-class GridView(QListView):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setViewMode(QListView.IconMode)
-        self.setResizeMode(QListView.Adjust)
-        self.setMovement(QListView.Static)
-        self.setUniformItemSizes(True)
-        self.setSpacing(4)
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.setMouseTracking(True)
-        self.setItemDelegate(GridDelegate(96, self))
-        self.setStyleSheet("QListView { border: none; padding: 10px; } "
-                           "QListView::item:selected { background: transparent; }")
-
-
-# --------------------------------------------------------------------------- list view
-class ListDelegate(QStyledItemDelegate):
-    """The star column: an outline star, filled orange when starred."""
-
-    def paint(self, p, option, index):
-        if index.model().columns()[index.column()] != "":
-            return super().paint(p, option, index)
-        e: Entry = index.data(Qt.UserRole)
-        r = QRectF(option.rect)
-        c = QColor(theme.LED_ORANGE) if e.starred else QColor(theme.TEXT_DIM)
-        draw_icon(p, "star", QRectF(r.center().x() - 8, r.center().y() - 8, 16, 16), c, 1.3,
-                  QColor(theme.LED_ORANGE) if e.starred else None)
-
-
-class ListView(QTreeView):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setRootIsDecorated(False)
-        self.setUniformRowHeights(True)
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setAlternatingRowColors(False)
-        self.setIconSize(QSize(18, 18))
-        self.setItemDelegate(ListDelegate(self))
-        self.setStyleSheet("QTreeView { border: none; } QTreeView::item { height: 34px; }")
-        self.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.header().setStretchLastSection(False)
-
-    def setModel(self, model):
-        super().setModel(model)
-        model.modelReset.connect(self._columns)
-        self._columns()
-
-    def _columns(self):
-        h = self.header()
-        cols = self.model().columns()
-        for i, c in enumerate(cols):
-            h.setSectionResizeMode(i, QHeaderView.Stretch if c == "NAME" else QHeaderView.Fixed)
-            self.setColumnWidth(i, {"LOCATION": 220, "SIZE": 100, "MODIFIED": 130, "": 44}.get(c, 300))
-
-    def drawRow(self, painter, option, index):
-        super().drawRow(painter, option, index)
-        if self.selectionModel().isRowSelected(index.row(), index.parent()):
-            r = QRectF(option.rect)
-            r.setLeft(0)
-            r.setRight(self.viewport().width())
-            painter.save()
-            painter.fillRect(r, theme.family_gradient(r.left(), 0, r.right(), 0, theme.LIT, 0.22))
-            painter.setPen(QPen(theme.family_gradient(r.left(), 0, r.right(), 0), 1))
-            painter.drawLine(QPointF(r.left(), r.top() + 0.5), QPointF(r.right(), r.top() + 0.5))
-            painter.drawLine(QPointF(r.left(), r.bottom() - 0.5), QPointF(r.right(), r.bottom() - 0.5))
-            painter.restore()
-
-
-# --------------------------------------------------------------------------- sidebar
-@dataclass
-class Place:
-    label: str
-    icon: str                  # an icon name, or "" for the divider between groups
-    path: str = ""
-    eject: bool = False
-
-
-class PlacesModel(QAbstractListModel):
-    def __init__(self, places: list[Place], parent=None):
-        super().__init__(parent)
-        self.rows = places
-
-    def rowCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self.rows)
-
-    def data(self, index, role=Qt.DisplayRole):
-        pl = self.rows[index.row()]
-        if role == Qt.DisplayRole:
-            return pl.label
-        if role == Qt.UserRole:
-            return pl
-        return None
-
-    def flags(self, index):
-        if not self.rows[index.row()].icon:
-            return Qt.NoItemFlags
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable
-
-
-class PlaceDelegate(QStyledItemDelegate):
-    def sizeHint(self, option, index):
-        return QSize(200, 13 if not index.data(Qt.UserRole).icon else 36)
-
-    def paint(self, p, option, index):
-        pl: Place = index.data(Qt.UserRole)
-        r = QRectF(option.rect)
-        p.save()
-        p.setRenderHint(QPainter.Antialiasing)
-        if not pl.icon:
-            p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-            p.drawLine(QPointF(r.left() + 14, r.center().y()), QPointF(r.right() - 14, r.center().y()))
-            p.restore()
-            return
-        band = r.adjusted(8, 2, -8, -2)
-        selected = bool(option.state & QStyle.State_Selected)
-        if selected:
-            p.setPen(QPen(theme.family_gradient(band.left(), 0, band.right(), 0), 1))
-            p.setBrush(theme.family_gradient(band.left(), 0, band.right(), 0, theme.LIT, 0.22))
-            p.drawRoundedRect(band.adjusted(.5, .5, -.5, -.5), 6, 6)
-        elif option.state & QStyle.State_MouseOver:
-            p.setPen(Qt.NoPen)
-            p.setBrush(QColor(255, 255, 255, 14))
-            p.drawRoundedRect(band, 6, 6)
-        colour = selected_text() if selected else QColor(theme.TEXT)
-        icon_colour = selected_text() if selected else QColor(theme.TEXT_DIM)
-        draw_icon(p, pl.icon, QRectF(band.left() + 10, band.center().y() - 9, 18, 18), icon_colour, 1.5)
-        f = QFont("Inter")
-        f.setPixelSize(13)
-        p.setFont(f)
-        p.setPen(colour)
-        p.drawText(QRectF(band.left() + 38, band.top(), band.width() - 70, band.height()),
-                   Qt.AlignVCenter | Qt.AlignLeft, pl.label)
-        if pl.eject:
-            draw_icon(p, "eject", QRectF(band.right() - 28, band.center().y() - 8, 16, 16), QColor(theme.TEXT_DIM),
-                      1.4)
-        p.restore()
-
-
-class Sidebar(QListView):
-    def __init__(self, places: list[Place], parent=None):
-        super().__init__(parent)
-        self.setModel(PlacesModel(places, self))
-        self.setItemDelegate(PlaceDelegate(self))
-        self.setMouseTracking(True)
-        self.setFixedWidth(232)
-        self.setStyleSheet(f"QListView {{ background: {theme.TAB_FRAME}; border: none; "
-                           f"border-right: 1px solid {theme.PANEL_EDGE}; border-radius: 0; padding: 8px 0; }} "
-                           "QListView::item:selected { background: transparent; }")
-
-    def select_path(self, path: str) -> None:
-        for i, pl in enumerate(self.model().rows):
-            if pl.path == path:
-                self.setCurrentIndex(self.model().index(i))
-                return
-
-
-# --------------------------------------------------------------------------- the header bar
-class PathBar(QWidget):
-    """Files' path bar: the folders from the top of the place down to here, as buttons; the current one bright,
-    and the folder menu (the vertical dots) at its end. Ctrl+L turns it into a text field."""
-
-    clicked = Signal(int)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.segments: list[tuple[str, str]] = []   # (icon or "", text)
-        self.setFixedHeight(34)
-        self.setMinimumWidth(200)
-
-    def set_segments(self, segs: list[tuple[str, str]]) -> None:
-        self.segments = segs
-        self.update()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        r = QRectF(self.rect()).adjusted(.5, .5, -.5, -.5)
-        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-        p.setBrush(QColor(theme.WIDGET))
-        p.drawRoundedRect(r, 6, 6)
-        f = QFont("Inter")
-        f.setPixelSize(13)
-        bold = QFont(f)
-        bold.setWeight(QFont.DemiBold)
-        x = r.left() + 12
-        for i, (icon, text) in enumerate(self.segments):
-            last = i == len(self.segments) - 1
-            if i:
-                p.setFont(f)
-                p.setPen(QColor(theme.TEXT_DIM))
-                p.drawText(QRectF(x, 0, 14, r.height()), Qt.AlignCenter, "/")
-                x += 18
-            if icon:
-                draw_icon(p, icon, QRectF(x, r.center().y() - 8, 16, 16),
-                          QColor(theme.TEXT if last else theme.TEXT_DIM), 1.5)
-                x += 22
-            font = bold if last else f
-            p.setFont(font)
-            p.setPen(QColor(theme.TEXT if last else theme.TEXT_DIM))
-            w = QFontMetrics(font).horizontalAdvance(text)
-            p.drawText(QRectF(x, 0, w + 2, r.height()), Qt.AlignVCenter | Qt.AlignLeft, text)
-            x += w + 6
-        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-        p.drawLine(QPointF(r.right() - 34, r.top() + 6), QPointF(r.right() - 34, r.bottom() - 6))
-        draw_icon(p, "more", QRectF(r.right() - 26, r.center().y() - 9, 18, 18), QColor(theme.TEXT_DIM), 1.5)
-
-
-class OperationsKey(SmallKey):
-    """The header bar's progress key: a pie that fills as the running copies and moves go."""
-
-    def __init__(self, parent=None):
-        super().__init__("operations", "Show operations", True, parent)
-        self.fraction = 0.0
-
-    def paintEvent(self, e):
-        super().paintEvent(e)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        c = QRectF(self.width() / 2 - 7, self.height() / 2 - 9.5, 14, 14)
-        path = QPainterPath()
-        path.moveTo(c.center())
-        path.arcTo(c, 90, -360 * self.fraction)
-        path.closeSubpath()
-        p.fillPath(path, theme.family_gradient(c.left(), 0, c.right(), 0))
-
-
-class HeaderBar(QWidget):
-    triggered = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 8, 12, 8)
-        lay.setSpacing(4)
-        self.keys: dict[str, SmallKey] = {}
-        for name, tip in (("back", "Back (Alt+Left)"), ("forward", "Forward (Alt+Right)")):
-            self._key(lay, name, tip)
-        lay.addSpacing(6)
-        self.path = PathBar()
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search everything in Home")
-        self.search.setFixedHeight(34)
-        self.search.hide()
-        lay.addWidget(self.path, 1)
-        lay.addWidget(self.search, 1)
-        lay.addSpacing(6)
-        self._key(lay, "search", "Search (Ctrl+F)", True)
-        self._key(lay, "grid", "Grid view (Ctrl+1) / list view (Ctrl+2)")
-        self.ops = OperationsKey()
-        self.ops.hide()
-        lay.addWidget(self.ops)
-        self.keys["operations"] = self.ops
-        self._key(lay, "menu", "Main menu (F10)")
-        self.setStyleSheet(f"HeaderBar {{ background: {theme.BACKGROUND}; }}")
-
-    def _key(self, lay, name, tip, checkable=False):
-        k = SmallKey(name, tip, checkable)
-        k.clicked.connect(lambda _=False, n=name: self.triggered.emit(n))
-        self.keys[name] = k
-        lay.addWidget(k)
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
-
-
-# --------------------------------------------------------------------------- tabs
-class TabStrip(QWidget):
-    """Files' tab bar: tabs share the width, the title centred, a close key on the current one; shown only when
-    two or more tabs are open."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.tabs: list[tuple[str, str]] = []    # (icon, title)
-        self.current = 0
-        self.setFixedHeight(38)
-
-    def set_tabs(self, tabs, current=0):
-        self.tabs, self.current = tabs, current
-        self.setVisible(len(tabs) > 1)
-        self.update()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        r = QRectF(self.rect())
-        p.fillRect(r, QColor(theme.TAB_FRAME))
-        n = max(1, len(self.tabs))
-        w = (r.width() - 16 - 4 * (n - 1)) / n
-        f = QFont("Inter")
-        f.setPixelSize(12.5)
-        for i, (icon, title) in enumerate(self.tabs):
-            t = QRectF(8 + i * (w + 4), 4, w, r.height() - 8)
-            cur = i == self.current
-            if cur:
-                p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-                p.setBrush(QColor(theme.WIDGET))
-                p.drawRoundedRect(t.adjusted(.5, .5, -.5, -.5), 6, 6)
-                bar = QRectF(t.left() + 14, t.bottom() - 3, t.width() - 28, 2)
-                p.setPen(Qt.NoPen)
-                p.setBrush(theme.family_gradient(bar.left(), 0, bar.right(), 0))
-                p.drawRoundedRect(bar, 1, 1)
-                draw_icon(p, "close", QRectF(t.right() - 26, t.center().y() - 8, 16, 16), QColor(theme.TEXT_DIM), 1.4)
-            p.setFont(f)
-            fm = QFontMetrics(f)
-            tw = fm.horizontalAdvance(title)
-            x = t.center().x() - (tw + 22) / 2
-            draw_icon(p, icon, QRectF(x, t.center().y() - 8, 16, 16), QColor(theme.TEXT if cur else theme.TEXT_DIM), 1.4)
-            p.setPen(QColor(theme.TEXT if cur else theme.TEXT_DIM))
-            p.drawText(QRectF(x + 22, t.top(), tw + 4, t.height()), Qt.AlignVCenter | Qt.AlignLeft, title)
-        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-        p.drawLine(0, int(r.height()) - 1, int(r.width()), int(r.height()) - 1)
-
-
-# --------------------------------------------------------------------------- search filters, overlays
-class Chip(QLabel):
-    def __init__(self, field_name: str, value: str, parent=None):
-        super().__init__(f"<span style='color:{theme.TEXT_DIM}'>{field_name}</span>&nbsp;&nbsp;{value}&nbsp;&nbsp;"
-                         f"<span style='color:{theme.TEXT_DIM}'>✕</span>", parent)
-        self.setStyleSheet(f"QLabel {{ background: {theme.WIDGET}; border: 1px solid {theme.ACCENT_DIM}; "
-                           "border-radius: 13px; padding: 4px 12px; font-size: 11.5px; font-weight: 600; }")
-
-
-class SearchFilters(QWidget):
-    """Files' search filters: When (a date range) and What (a kind of file)."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(14, 8, 14, 8)
-        lay.setSpacing(8)
-        self.lay = lay
-        self.where = QLabel("")
-        self.where.setProperty("role", "dim")
-        self.setStyleSheet(f"SearchFilters {{ background: {theme.BACKGROUND}; }}")
-
-    def set_filters(self, chips: list[tuple[str, str]], where: str) -> None:
-        while self.lay.count():
-            it = self.lay.takeAt(0)
-            if it.widget() and it.widget() is not self.where:
-                it.widget().deleteLater()
-        for k, v in chips:
-            self.lay.addWidget(Chip(k, v))
-        self.lay.addStretch(1)
-        self.where.setText(where)
-        self.lay.addWidget(self.where)
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
-        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
-
-
-class FloatingStatus(QLabel):
-    """The "3 items selected (14.6 MB)" label Files floats in the view's bottom-right corner."""
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setStyleSheet(f"QLabel {{ background: {theme.WIDGET}; color: {theme.TEXT}; border: 1px solid "
-                           f"{theme.PANEL_EDGE}; border-radius: 8px; padding: 7px 14px; font-size: 12px; }}")
-        self.hide()
-
-    def show_text(self, text: str) -> None:
-        self.setText(text)
-        self.adjustSize()
-        self.setVisible(bool(text))
-        self.place()
-
-    def place(self):
-        par = self.parentWidget()
-        self.move(par.width() - self.width() - 18, par.height() - self.height() - 16)
-        self.raise_()
-
-
-class OperationsPopover(QFrame):
-    """What the operations key opens: each running copy or move, its progress, and a cancel key."""
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setStyleSheet(f"OperationsPopover {{ background: {theme.MENU}; border: 1px solid {theme.PANEL_EDGE}; "
-                           "border-radius: 10px; }")
-        self.lay = QVBoxLayout(self)
-        self.lay.setContentsMargins(16, 14, 16, 14)
-        self.lay.setSpacing(12)
-        self.setFixedWidth(380)
-        self.hide()
-
-    def set_operations(self, ops: list[tuple[str, str, float]]) -> None:
-        for title, detail, frac in ops:
-            row = QHBoxLayout()
-            col = QVBoxLayout()
-            col.setSpacing(5)
-            t = QLabel(title)
-            t.setStyleSheet(f"color: {theme.ON_DARK}; font-weight: 600; font-size: 12.5px;")
-            t.setWordWrap(True)
-            bar = QProgressBar()
-            bar.setRange(0, 1000)
-            bar.setValue(int(frac * 1000))
-            bar.setTextVisible(False)
-            bar.setFixedHeight(8)
-            d = QLabel(detail)
-            d.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 11.5px;")
-            col.addWidget(t)
-            col.addWidget(bar)
-            col.addWidget(d)
-            row.addLayout(col, 1)
-            row.addWidget(SmallKey("close", "Cancel"), 0, Qt.AlignVCenter)
-            self.lay.addLayout(row)
-        self.adjustSize()
-
-
-# --------------------------------------------------------------------------- the window
 class MainWindow(QMainWindow):
-    def __init__(self, places: list[Place], parent=None):
+    def __init__(self, folders: list[str] | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PR7-E")
         self.resize(1280, 800)
+        self.answers: dict = {}                 # tests: kind -> function(payload) instead of a dialog
+        self.asker = Asker(self._ask)
+        self.runner = JobRunner(self.asker)
+        self.runner.finished.connect(self._job_done)
+        self.sync_jobs = False                  # tests: run file operations here and now
+        self.loader = Loader()
+        self.loader.thumb_ready.connect(self._thumb_ready)
+        self.loader.count_ready.connect(self._count_ready)
+        self.searcher = Search()
+        # Queued: results are matched to the search that asked, which is recorded once start() returns.
+        self.searcher.found.connect(self._found, Qt.QueuedConnection)
+        self.searcher.done.connect(self._search_done, Qt.QueuedConnection)
+        self.undo_stack: list[ops.Job] = []
+        self.redo_stack: list[ops.Job] = []
+        self.drives = places.drives()
+        self.show_hidden = settings.get_bool("show_hidden")
+        self.sort = settings.get("sort", "name")
+        self.view_mode = settings.get("view", "grid")
+        self.zoom = min(len(GridView.ZOOMS) - 1, max(0, settings.get_int("zoom", 2)))
+        self.watcher = QFileSystemWatcher(self)
+        self.watcher.directoryChanged.connect(self._dir_changed)
+        self.reload_timer = QTimer(self, singleShot=True, interval=250)
+        self.reload_timer.timeout.connect(self._reload_dirty)
+        self.dirty: set[str] = set()
+        self.search_timer = QTimer(self, singleShot=True, interval=250)
+        self.search_timer.timeout.connect(self._run_search)
+        self.tick = QTimer(self, interval=150)
+        self.tick.timeout.connect(self._tick)
+        self.drive_timer = QTimer(self, interval=3000)
+        self.drive_timer.timeout.connect(self._check_drives)
+        self.drive_timer.start()
+
         root = QWidget()
         v = QVBoxLayout(root)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
-        v.addWidget(Header("FILES"))
+        self.header = Header("FILES")
+        v.addWidget(self.header)
         body = QHBoxLayout()
         body.setSpacing(0)
-        self.sidebar = Sidebar(places)
+        self.sidebar = Sidebar()
+        self.sidebar.activated_place.connect(self._place)
+        self.sidebar.dropped.connect(self._sidebar_drop)
+        self.sidebar.eject.connect(lambda pl: self._eject(pl.path))
+        self.sidebar.customContextMenuRequested.connect(self._sidebar_menu)
+        self.sidebar.setVisible(settings.get_bool("sidebar", True))
         body.addWidget(self.sidebar)
         right = QVBoxLayout()
         right.setSpacing(0)
         self.headerbar = HeaderBar()
+        self.headerbar.triggered.connect(self._key)
+        self.headerbar.path.go.connect(lambda loc: self.go(loc))
+        self.headerbar.path.edit.connect(self.edit_location)
+        self.headerbar.path.menu.connect(lambda: self._background_menu(
+            self.headerbar.path.mapToGlobal(QPoint(self.headerbar.path.width() - 30, self.headerbar.path.height()))))
+        self.headerbar.location.returnPressed.connect(self._location_entered)
+        self.headerbar.location.installEventFilter(self)
+        self.headerbar.search.textEdited.connect(lambda _t: self.search_timer.start())
+        self.headerbar.search.installEventFilter(self)
         right.addWidget(self.headerbar)
-        self.tabs = TabStrip()
-        self.tabs.hide()
-        right.addWidget(self.tabs)
+        self.tabbar = TabStrip()
+        self.tabbar.current_changed.connect(self.set_current_tab)
+        self.tabbar.close_requested.connect(self.close_tab)
+        self.tabbar.new_requested.connect(lambda: self.new_tab())
+        right.addWidget(self.tabbar)
         self.filters = SearchFilters()
-        self.filters.hide()
+        self.filters.changed.connect(self._run_search)
         right.addWidget(self.filters)
-        self.view_area = QWidget()
-        va = QVBoxLayout(self.view_area)
-        va.setContentsMargins(0, 0, 0, 0)
-        self.stack = QStackedWidget()
-        va.addWidget(self.stack)
-        self.model = EntryModel(self)
-        self.grid = GridView()
-        self.grid.setModel(self.model)
-        self.list = ListView()
-        self.list.setModel(self.model)
-        self.stack.addWidget(self.grid)
-        self.stack.addWidget(self.list)
-        right.addWidget(self.view_area, 1)
+        self.trashbar = TrashBar()
+        self.trashbar.restore.connect(lambda: self.restore(self.tab.selected() or self.tab.model.rows))
+        self.trashbar.empty.connect(self.empty_trash)
+        right.addWidget(self.trashbar)
+        self.content = QStackedWidget()
+        right.addWidget(self.content, 1)
         body.addLayout(right, 1)
         v.addLayout(body, 1)
         self.setCentralWidget(root)
-        self.status = FloatingStatus(self.view_area)
+        self.status = FloatingStatus(self.content)
+        self.empty = EmptyState(self.content)
         self.popover = OperationsPopover(self)
-        self.headerbar.triggered.connect(self._key)
-        for view in (self.grid, self.list):
-            view.selectionModel().selectionChanged.connect(self._selection)
+        self.tabs: list[Tab] = []
+        self.fill_sidebar()
+        self._actions()
+        for f in folders or [places.home()]:
+            self.new_tab(f)
+        self.set_current_tab(0)
+        geo = settings.get("geometry")
+        if geo:
+            try:
+                self.restoreGeometry(bytes.fromhex(geo))
+            except ValueError:
+                pass
+        WINDOWS.append(self)
 
-    # ----------------------------------------------------------------- showing things (the mock-up's inputs)
-    def show_folder(self, segments, entries: list[Entry], sidebar_path: str = "") -> None:
-        self.headerbar.path.set_segments(segments)
-        self.headerbar.path.show()
-        self.headerbar.search.hide()
-        self.headerbar.keys["search"].setChecked(False)
-        self.filters.hide()
-        self.model.set_rows(entries)
-        self.sidebar.select_path(sidebar_path)
-        self._selection()
+    # ================================================================== tabs
+    @property
+    def tab(self) -> Tab:
+        return self.tabs[self.content.currentIndex()] if self.tabs else None
 
-    def show_search(self, text: str, chips, where: str, entries: list[Entry]) -> None:
-        self.headerbar.path.hide()
-        self.headerbar.search.show()
-        self.headerbar.search.setText(text)
-        self.headerbar.keys["search"].setChecked(True)
-        self.filters.set_filters(chips, where)
-        self.filters.show()
-        self.model.set_rows(entries, search=True)
-        self._selection()
+    def new_tab(self, location: str | None = None, switch: bool = True) -> Tab:
+        location = location or (self.tab.location if self.tab and self.tab.location else places.home())
+        t = Tab(self, location)
+        for view in (t.grid, t.list):
+            view.activated.connect(lambda _i, t=t: self.open_selected(t))
+            view.customContextMenuRequested.connect(lambda pos, t=t, view=view: self._view_menu(t, view, pos))
+            view.selectionModel().selectionChanged.connect(lambda *_a, t=t: self._selection(t))
+            view.dropped.connect(lambda paths, target, action, t=t: self.drop(paths, target or t.location, action))
+            view.typed.connect(self.start_search)
+        t.list.star_clicked.connect(lambda e: self.star([e.path], not t.model.starred(e)))
+        t.list.sort_clicked.connect(self._sort_column)
+        t.grid.set_icon_size(GridView.ZOOMS[self.zoom])
+        t.stack.setCurrentWidget(t.grid if self.view_mode == "grid" else t.list)
+        index = self.content.currentIndex() + 1 if self.tabs else 0
+        self.tabs.insert(index, t)
+        self.content.insertWidget(index, t)
+        self.load(t)
+        if switch:
+            self.set_current_tab(index)
+        else:
+            self._tabbar()
+        return t
 
-    def set_view(self, mode: str) -> None:
-        self.stack.setCurrentWidget(self.grid if mode == "grid" else self.list)
-        # The switch shows the view you'd go to, as in Files.
-        self.headerbar.keys["grid"].icon_name = "list" if mode == "grid" else "grid"
-        self.headerbar.keys["grid"].update()
+    def set_current_tab(self, i: int) -> None:
+        if not 0 <= i < len(self.tabs):
+            return
+        self.content.setCurrentIndex(i)
+        self._tabbar()
+        self._chrome()
+        self.tab.view.setFocus()
 
-    def select(self, names: set[str]) -> None:
-        view = self.stack.currentWidget()
-        sm = view.selectionModel()
-        sm.clear()
-        from PySide6.QtCore import QItemSelectionModel
-        for i, e in enumerate(self.model.rows):
-            if e.name in names:
-                sm.select(self.model.index(i, 0), QItemSelectionModel.Select | QItemSelectionModel.Rows)
+    def close_tab(self, i: int | None = None) -> None:
+        i = self.content.currentIndex() if i is None else i
+        if len(self.tabs) <= 1:
+            self.close()
+            return
+        t = self.tabs.pop(i)
+        self.content.removeWidget(t)
+        t.deleteLater()
+        self.set_current_tab(min(i, len(self.tabs) - 1))
+        self._watch()
 
-    def show_operations(self, ops, fraction: float, open_popover: bool = False) -> None:
-        self.headerbar.ops.fraction = fraction
-        self.headerbar.ops.show()
-        self.popover.set_operations(ops)
-        if open_popover:
-            k = self.headerbar.ops
-            pos = k.mapTo(self, k.rect().bottomRight())
-            self.popover.move(pos.x() - self.popover.width() + 12, pos.y() + 6)
-            self.popover.show()
-            self.popover.raise_()
+    def _tabbar(self):
+        self.tabbar.set_tabs([t.title() for t in self.tabs], self.content.currentIndex())
 
-    def context_menu(self, entry: Entry) -> QMenu:
-        """Files' right-click menu for a file, plus "Show more options" (the full Windows menu)."""
-        m = QMenu(self)
-        app = {"audio": "PR7-L", "text": "PR7-W", "archive": "PR7-Z"}.get(entry.kind, "Photos")
-        m.addAction(f"Open with {app}\tReturn")
-        m.addAction("Open with other application")
-        m.addSeparator()
-        for t in ("Cut\tCtrl+X", "Copy\tCtrl+C", "Move to…", "Copy to…", "Move to Trash\tDelete"):
-            m.addAction(t)
-        m.addSeparator()
-        m.addAction("Rename…\tF2")
-        m.addAction("Compress…")
-        if entry.kind == "archive":
-            m.addAction("Extract here")
-            m.addAction("Extract to…")
-        m.addSeparator()
-        m.addAction("Unstar" if entry.starred else "Star")
-        m.addAction("Properties\tCtrl+I")
-        m.addSeparator()
-        m.addAction("Show more options\tShift+F10")
-        return m
+    # ================================================================== locations
+    def go(self, location: str, tab: Tab | None = None, record: bool = True) -> None:
+        """Go to a folder or a place (recent: starred: trash: other:)."""
+        tab = tab or self.tab
+        if location not in places.SPECIAL:
+            location = os.path.abspath(location)
+            if not os.path.isdir(location):
+                self._message("Unable to access location", f"“{location}” can’t be found.", [])
+                return
+        if tab.search is not None:
+            self.end_search(tab, reload=False)
+        if record and os.path.normcase(location) != os.path.normcase(tab.location):
+            tab.back.append(tab.location)
+            tab.forward.clear()
+        old = tab.location
+        tab.location = location
+        self.load(tab, keep_selection=False)
+        # Going up selects the folder you came from, as Files does.
+        if old and os.path.normcase(os.path.dirname(old)) == os.path.normcase(location):
+            tab.select_paths([old])
 
-    # ----------------------------------------------------------------- reactions
-    def _key(self, name: str) -> None:
-        if name == "grid":
-            self.set_view("list" if self.stack.currentWidget() is self.grid else "grid")
-        elif name == "operations":
-            self.popover.setVisible(not self.popover.isVisible())
+    def back(self):
+        t = self.tab
+        if t.search is not None:
+            self.end_search()
+            return
+        if t.back:
+            t.forward.append(t.location)
+            self.go(t.back.pop(), record=False)
 
-    def _selection(self, *_):
-        view = self.stack.currentWidget()
-        rows = sorted({i.row() for i in view.selectionModel().selectedIndexes()})
-        if not rows:
+    def forward(self):
+        t = self.tab
+        if t.forward:
+            t.back.append(t.location)
+            self.go(t.forward.pop(), record=False)
+
+    def up(self):
+        loc = self.tab.location
+        if loc in places.SPECIAL:
+            return
+        parent = os.path.dirname(os.path.normpath(loc))
+        if parent and os.path.normcase(parent) != os.path.normcase(loc):
+            self.go(parent)
+
+    def reload(self):
+        if self.tab.search is not None:
+            self._run_search()
+        else:
+            self.load(self.tab)
+
+    def load(self, tab: Tab, keep_selection: bool = True) -> None:
+        """Read the tab's location into its model."""
+        keep = [e.path for e in tab.selected()] if keep_selection and tab.model.rows else []
+        scroll = tab.view.verticalScrollBar().value() if keep_selection else 0
+        loc = tab.location
+        tab.error = ""
+        mode, entries = "folder", []
+        try:
+            if loc == "recent:":
+                mode = "recent"
+                for path, _when in places.recent():
+                    try:
+                        e = fs.entry_for(path)
+                    except OSError:
+                        continue
+                    e.location = pretty(os.path.dirname(path))
+                    entries.append(e)
+            elif loc == "starred:":
+                mode = "starred"
+                for path in places.starred():
+                    try:
+                        e = fs.entry_for(path)
+                    except OSError:
+                        continue
+                    e.location = pretty(os.path.dirname(path))
+                    entries.append(e)
+                entries = fs.sort_entries(entries, self.sort)
+            elif loc == "trash:":
+                mode = "trash"
+                for it in trash.items():
+                    e = fs.Entry(it.name, it.data, it.is_dir, it.size, it.deleted, location=pretty(
+                        os.path.dirname(it.original)), trash=it)
+                    entries.append(e)
+                entries = fs.sort_entries(entries, self.sort if self.sort != "name" else "mtime_desc")
+            elif loc == "other:":
+                mode = "other"
+                self.drives = places.drives()
+                for d in self.drives:
+                    extra = f"{fs.human_size(d.free)} free of {fs.human_size(d.total)}" if d.total else ""
+                    entries.append(fs.Entry(d.label, d.root, True, 0, 0, kind="usb" if d.removable else "drive",
+                                            extra=extra))
+            else:
+                entries = fs.sort_entries(fs.list_dir(loc, self.show_hidden), self.sort)
+        except OSError as e:
+            tab.error = e.strerror or str(e)
+        tab.model.stars = {os.path.normcase(p) for p in places.starred()}
+        tab.model.set_rows(entries, mode)
+        if mode == "folder":
+            for e in entries:
+                if e.is_dir:
+                    self.loader.count(e.path, self.show_hidden)
+        elif mode in ("recent", "starred"):
+            for e in entries:
+                if e.is_dir:
+                    self.loader.count(e.path, self.show_hidden)
+        if keep:
+            tab.select_paths(keep, current=False)
+        tab.view.verticalScrollBar().setValue(scroll)
+        self._watch()
+        if tab is self.tab:
+            self._chrome()
+        self._tabbar()
+
+    def _chrome(self) -> None:
+        """Everything outside the view that follows the current tab."""
+        t = self.tab
+        if t is None:
+            return
+        icon, title = t.title()
+        self.setWindowTitle(title)
+        hb = self.headerbar
+        hb.keys["back"].setEnabled(bool(t.back) or t.search is not None)
+        hb.keys["forward"].setEnabled(bool(t.forward))
+        hb.path.set_segments(self._segments(t.location))
+        if t.search is not None:
+            hb.show_mode("search")
+            if hb.search.text() != t.search["text"]:
+                hb.search.setText(t.search["text"])
+            self.filters.when.set_value(t.search["when"])
+            self.filters.what.set_value(t.search["what"])
+            self.filters.where.setText(f"Searching {self._root_name(t.search['root'])} and the folders in it")
+            hb.search.setPlaceholderText(f"Search everything in {self._root_name(t.search['root'])}")
+        elif hb.location.isVisible():
+            pass
+        else:
+            hb.show_mode("path")
+        self.filters.setVisible(t.search is not None)
+        self.trashbar.setVisible(t.location == "trash:" and t.search is None)
+        self.trashbar.empty_btn.setEnabled(bool(t.model.rows))
+        hb.keys["view"].icon_name = "list" if self.view_mode == "grid" else "grid"
+        hb.keys["view"].setToolTip("List view (Ctrl+2)" if self.view_mode == "grid" else "Grid view (Ctrl+1)")
+        hb.keys["view"].update()
+        self.sidebar.select_path(t.location if t.search is None else "")
+        for view in (t.grid, t.list):
+            view.can_drop = t.location not in places.SPECIAL and t.search is None
+        self._empty_state()
+        self._selection(t)
+
+    def _root_name(self, root: str) -> str:
+        if os.path.normcase(root) == os.path.normcase(places.home()):
+            return "Home"
+        return os.path.basename(os.path.normpath(root)) or root
+
+    def _segments(self, loc: str) -> list[tuple[str, str, str]]:
+        """The path bar's buttons: from Home (or the drive) down to the folder."""
+        if loc in places.SPECIAL:
+            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network"}[loc]
+            return [(icon, places.SPECIAL[loc], loc)]
+        home = places.home()
+        if fs.is_inside(loc, home):
+            segs = [("home", "Home", home)]
+            base = home
+        else:
+            d = places.drive_of(loc, self.drives)
+            base = d.root if d else os.path.splitdrive(loc)[0] + os.sep if os.name == "nt" else "/"
+            label = d.label if d else base
+            segs = [("usb" if d and d.removable else "drive", label, base)]
+        rel = os.path.relpath(loc, base)
+        if rel != ".":
+            cur = base
+            for part in rel.split(os.sep):
+                cur = os.path.join(cur, part)
+                segs.append(("", part, cur))
+        return segs
+
+    def _empty_state(self):
+        t = self.tab
+        if t.error:
+            self.empty.show_state("folder", "Unable to Access Location", t.error)
+        elif t.model.rows:
+            self.empty.show_state("", "")
+        elif t.search is not None:
+            busy = not t.search.get("done", True)
+            self.empty.show_state("search", "" if busy or not (t.search["text"] or t.search["when"] or
+                                                               t.search["what"]) else "No Results Found",
+                                  "Try a different search.")
+        elif t.location == "trash:":
+            self.empty.show_state("trash", "Trash is Empty")
+        elif t.location == "starred:":
+            self.empty.show_state("star", "No Starred Files", "Star an item with its right-click menu.")
+        elif t.location == "recent:":
+            self.empty.show_state("recent", "No Recent Files")
+        else:
+            self.empty.show_state("folder", "Folder is Empty")
+
+    def _place(self, pl, new_tab: bool):
+        if new_tab:
+            self.new_tab(pl.path)
+        else:
+            self.go(pl.path)
+
+    def edit_location(self):
+        """Ctrl+L: the path bar becomes a text field holding the path, selected."""
+        t = self.tab
+        hb = self.headerbar
+        hb.location.setText("" if t.location in places.SPECIAL else t.location)
+        hb.show_mode("location")
+        hb.location.setFocus()
+        hb.location.selectAll()
+
+    def _location_entered(self):
+        text = os.path.expandvars(os.path.expanduser(self.headerbar.location.text().strip()))
+        self.headerbar.show_mode("path")
+        if not text:
+            return
+        if text.lower().startswith("file:"):
+            text = QUrl(text).toLocalFile()
+        if os.path.isfile(text):
+            self.go(os.path.dirname(text))
+            self.tab.select_paths([text])
+            return
+        self.go(text)
+
+    def eventFilter(self, obj, e):
+        if e.type() == e.Type.KeyPress and e.key() == Qt.Key_Escape:
+            if obj is self.headerbar.location:
+                self.headerbar.show_mode("path")
+                self.tab.view.setFocus()
+                return True
+            if obj is self.headerbar.search:
+                self.end_search()
+                return True
+        if e.type() == e.Type.KeyPress and obj is self.headerbar.search and e.key() in (Qt.Key_Down, Qt.Key_Return,
+                                                                                          Qt.Key_Enter):
+            self.tab.view.setFocus()
+            if not self.tab.selected() and self.tab.model.rows:
+                self.tab.select_paths([self.tab.model.rows[0].path])
+            return True
+        if e.type() == e.Type.FocusOut and obj is self.headerbar.location:
+            QTimer.singleShot(0, lambda: self.headerbar.show_mode("path") if not self.headerbar.location.hasFocus()
+                              and self.headerbar.location.isVisible() else None)
+        return super().eventFilter(obj, e)
+
+    # ================================================================== search
+    def start_search(self, text: str = "") -> None:
+        """Ctrl+F, the search key, or typing in a folder: search it and every folder in it."""
+        t = self.tab
+        if t.search is None:
+            root = t.location if t.location not in places.SPECIAL else places.home()
+            t.search = {"text": "", "when": "", "what": "", "root": root, "generation": 0, "done": True}
+        hb = self.headerbar
+        hb.show_mode("search")
+        if text:
+            t.search["text"] = hb.search.text() + text if hb.search.hasFocus() else text
+            hb.search.setText(t.search["text"])
+            self.search_timer.start()
+        hb.search.setFocus()
+        hb.search.end(False)
+        self._chrome()
+
+    def end_search(self, tab: Tab | None = None, reload: bool = True) -> None:
+        tab = tab or self.tab
+        if tab.search is None:
+            return
+        self.searcher.stop()
+        tab.search = None
+        self.headerbar.search.clear()
+        self.headerbar.show_mode("path")
+        if reload:
+            self.load(tab, keep_selection=False)
+            tab.view.setFocus()
+
+    def _run_search(self, sync: bool = False):
+        t = self.tab
+        if t.search is None:
+            return
+        s = t.search
+        s["text"] = self.headerbar.search.text().strip()
+        s["when"], s["what"] = self.filters.when.value, self.filters.what.value
+        if not (s["text"] or s["when"] or s["what"]):
+            self.searcher.stop()
+            s["done"] = True
+            # Nothing to look for: show the folder, as Files does.
+            loc = s["root"]
+            try:
+                entries = fs.sort_entries(fs.list_dir(loc, self.show_hidden), self.sort)
+            except OSError:
+                entries = []
+            t.model.set_rows(entries, "folder")
+            self._chrome()
+            self._tabbar()
+            return
+        t.model.set_rows([], "search")
+        s["done"] = False
+        s["generation"] = self.searcher.start(s["root"], s["text"], s["when"], s["what"], self.show_hidden,
+                                              sync=sync or self.sync_jobs)
+        self._chrome()
+        self._tabbar()
+
+    def _found(self, gen, batch):
+        for t in self.tabs:
+            if t.search is not None and t.search.get("generation") == gen:
+                t.model.append(batch)
+                for e in batch:
+                    if e.is_dir:
+                        self.loader.count(e.path, self.show_hidden)
+                if t is self.tab:
+                    self._empty_state()
+
+    def _search_done(self, gen):
+        for t in self.tabs:
+            if t.search is not None and t.search.get("generation") == gen:
+                t.search["done"] = True
+                if t is self.tab:
+                    self._empty_state()
+
+    # ================================================================== opening
+    def open_selected(self, tab: Tab | None = None, new_tab: bool = False) -> None:
+        tab = tab or self.tab
+        entries = tab.selected()
+        if not entries:
+            return
+        folders = [e for e in entries if e.is_dir]
+        files = [e for e in entries if not e.is_dir]
+        if tab.location == "trash:":
+            self._message("Can’t open items in Trash", "Restore them first to open them.", [])
+            return
+        if len(folders) == 1 and not files and not new_tab:
+            self.go(folders[0].path)
+        else:
+            for f in folders:
+                self.new_tab(f.path, switch=False)
+        for f in files:
+            self.open_file(f.path)
+
+    def open_file(self, path: str) -> None:
+        try:
+            system.open_path(path)
+        except OSError as e:
+            self._message("Unable to open", f"“{os.path.basename(path)}” couldn’t be opened.",
+                          [e.strerror or str(e)])
+
+    def open_location(self, e: fs.Entry) -> None:
+        """Search results, Recent, Starred: open the folder it's in, with it selected."""
+        path = e.trash.original if e.trash else e.path
+        self.go(os.path.dirname(path))
+        self.tab.select_paths([path])
+
+    # ================================================================== the selection label
+    def _selection(self, tab: Tab):
+        if tab is not self.tab:
+            return
+        entries = tab.selected()
+        if not entries:
             self.status.show_text("")
             return
-        entries = [self.model.rows[r] for r in rows]
         if len(entries) == 1:
             e = entries[0]
-            text = f"“{e.name}” selected ({size_text(e)})"
+            size = fs.size_text(e)
+            text = f"“{e.name}” selected" + (f" ({size})" if size else "")
         else:
             files = [e for e in entries if not e.is_dir]
             dirs = len(entries) - len(files)
@@ -742,10 +612,728 @@ class MainWindow(QMainWindow):
                 parts.append(f"{dirs} folder{'s' if dirs > 1 else ''} selected")
             if files:
                 parts.append(f"{len(files)} item{'s' if len(files) > 1 else ''} selected "
-                             f"({human_size(sum(e.size for e in files))})")
+                             f"({fs.human_size(sum(e.size for e in files))})")
             text = ", ".join(parts)
         self.status.show_text(text)
 
+    def _thumb_ready(self, path):
+        for t in self.tabs:
+            t.model.changed(path)
+
+    def _count_ready(self, path, n):
+        for t in self.tabs:
+            t.model.set_count(path, n)
+        if self.tab is not None and self.tab.selected():
+            self._selection(self.tab)
+
+    # ================================================================== watching folders
+    def _watch(self):
+        want = {t.location for t in self.tabs if t.location not in places.SPECIAL}
+        have = set(self.watcher.directories())
+        if have - want:
+            self.watcher.removePaths(list(have - want))
+        add = [p for p in want - have if os.path.isdir(p)]
+        if add:
+            self.watcher.addPaths(add)
+
+    def _dir_changed(self, path):
+        self.dirty.add(os.path.normcase(path))
+        self.reload_timer.start()
+
+    def _reload_dirty(self):
+        dirty, self.dirty = self.dirty, set()
+        for t in self.tabs:
+            if t.search is None and (os.path.normcase(t.location) in dirty or
+                                     t.location in ("trash:", "starred:", "recent:") and "*" in dirty):
+                if t.location not in places.SPECIAL and not os.path.isdir(t.location):
+                    # The folder went away: go to the nearest one that's still there.
+                    p = t.location
+                    while p and not os.path.isdir(p):
+                        p = os.path.dirname(p)
+                    t.location = p or places.home()
+                self.load(t)
+
+    def _check_drives(self):
+        now = places.drives()
+        if [(d.root, d.label) for d in now] != [(d.root, d.label) for d in self.drives]:
+            self.drives = now
+            self.fill_sidebar()
+
+    def fill_sidebar(self):
+        self.sidebar.model().set_places(places.sidebar())
+        if self.tab is not None:
+            self.sidebar.select_path(self.tab.location)
+
+    # ================================================================== file operations
+    def run(self, job: ops.Job, origin: str = "") -> ops.Job:
+        """Start a job; `origin` is "undo" / "redo" for jobs that came from those stacks."""
+        job.origin = origin
+        self.runner.start(job, sync=self.sync_jobs)
+        if job in self.runner.running:
+            self.tick.start()
+            self._tick()
+        return job
+
+    def _tick(self):
+        jobs = list(self.runner.running)
+        hb = self.headerbar
+        if not jobs:
+            self.tick.stop()
+            hb.ops.hide()
+            self.popover.hide()
+            return
+        if not hb.ops.isVisible():
+            hb.ops.show()
+        hb.ops.fraction = sum(j.fraction() for j in jobs) / len(jobs)
+        hb.ops.update()
+        self.popover.set_jobs(jobs)
+        if self.popover.isVisible():
+            self._place_popover()
+
+    def _place_popover(self):
+        k = self.headerbar.ops
+        pos = k.mapTo(self, k.rect().bottomRight())
+        self.popover.move(pos.x() - self.popover.width() + 12, pos.y() + 6)
+        self.popover.raise_()
+
+    def _job_done(self, job: ops.Job):
+        self._tick()
+        for folder in job.changed:
+            self.dirty.add(os.path.normcase(folder))
+        if job.kind in ("trash", "restore", "delete"):
+            self.dirty.add("*")
+        self._reload_dirty()
+        if job.undo is not None:
+            if job.origin == "undo":
+                self.redo_stack.append(job.undo)
+            else:
+                self.undo_stack.append(job.undo)
+                if job.origin != "redo":
+                    self.redo_stack.clear()
+        # Stars follow renames and moves.
+        if isinstance(job, ops.RenameJob) and job.state == "done":
+            places.follow_star(job.path, job.new_path)
+        if isinstance(job, (ops.CopyJob, ops.MovePairsJob)) and job.kind == "move":
+            pairs = getattr(job, "moved", None) or [(was, now) for now, was in getattr(job, "pairs", [])]
+            for now, was in pairs:
+                places.follow_star(was, now)
+        # Files selects what was made: a new folder, a renamed item, pasted items.
+        select = []
+        if isinstance(job, ops.NewFolderJob) and job.state == "done":
+            select = [job.path]
+        elif isinstance(job, ops.RenameJob) and job.state == "done":
+            select = [job.new_path]
+        elif isinstance(job, ops.CopyJob) and job.origin == "":
+            select = job.created or [now for now, _was in job.moved]
+        if select and self.tab.search is None and os.path.normcase(self.tab.location) == \
+                os.path.normcase(os.path.dirname(select[0])):
+            self.load(self.tab, keep_selection=False)
+            self.tab.select_paths(select)
+            self.tab.view.setFocus()
+        if isinstance(job, ops.TrashJob) and job.untrashable:
+            names = [os.path.basename(p) for p in job.untrashable]
+            if self._ask("confirm", {
+                    "title": "Delete permanently",
+                    "heading": ("“%s” can’t be put in the Trash. Do you want to delete it "
+                                "immediately?" % names[0]) if len(names) == 1 else
+                    f"{len(names)} items can’t be put in the Trash. Do you want to delete them immediately?",
+                    "text": "This drive has no Trash. If you delete an item, it will be permanently lost.",
+                    "button": "Delete"}):
+                self.run(ops.DeleteJob(job.untrashable))
+        if job.errors:
+            self._message("Errors", {"copy": "Some files couldn’t be copied.",
+                                     "move": "Some files couldn’t be moved."}.get(
+                job.kind, "The operation didn’t complete."), job.errors)
+        self._chrome()
+
+    def paths_selected(self) -> list[str]:
+        return [e.path for e in self.tab.selected() if e.kind not in ("drive", "usb")]
+
+    def copy(self, cut: bool = False) -> None:
+        """Ctrl+C / Ctrl+X: the files on the clipboard the way Explorer and GNOME both read them."""
+        paths = self.paths_selected() if self.tab.location != "trash:" else []
+        if not paths:
+            return
+        md = QMimeData()
+        md.setUrls([QUrl.fromLocalFile(p) for p in paths])
+        md.setData(WINDOWS_EFFECT, struct.pack("<I", 2 if cut else 5))  # DROPEFFECT_MOVE / COPY|LINK (Explorer's)
+        md.setData(GNOME_COPIED, ("cut" if cut else "copy").encode() + b"\n" +
+                   b"\n".join(QUrl.fromLocalFile(p).toEncoded().data() for p in paths))
+        QGuiApplication.clipboard().setMimeData(md)
+        self._toast(f"{len(paths)} item{'s' if len(paths) > 1 else ''} {'cut' if cut else 'copied'}" if len(paths) > 1
+                    else f"“{os.path.basename(paths[0])}” {'cut' if cut else 'copied'}")
+
+    @staticmethod
+    def clipboard_files() -> tuple[list[str], bool]:
+        md = QGuiApplication.clipboard().mimeData()
+        if md is None or not md.hasUrls():
+            return [], False
+        paths = [u.toLocalFile() for u in md.urls() if u.isLocalFile()]
+        cut = False
+        if md.hasFormat(GNOME_COPIED):
+            cut = bytes(md.data(GNOME_COPIED)).startswith(b"cut")
+        elif md.hasFormat(WINDOWS_EFFECT):
+            raw = bytes(md.data(WINDOWS_EFFECT))
+            cut = len(raw) >= 4 and struct.unpack("<I", raw[:4])[0] & 2 == 2 and not \
+                struct.unpack("<I", raw[:4])[0] & 1
+        return paths, cut
+
+    def paste(self, into: str | None = None) -> None:
+        paths, cut = self.clipboard_files()
+        dest = into or self.tab.location
+        if not paths or dest in places.SPECIAL:
+            return
+        self.run(ops.CopyJob(paths, dest, move=cut))
+        if cut:
+            QGuiApplication.clipboard().clear()  # a cut is pasted once, as in Explorer
+
+    def drop(self, paths: list[str], target: str, action: str = "") -> None:
+        if target in places.SPECIAL:
+            if target == "trash:":
+                self.run(ops.TrashJob(paths))
+            return
+        if not action:  # Files: same drive moves, another drive copies
+            action = "move" if all(fs.same_volume(p, target) for p in paths) else "copy"
+        if action == "move" and all(os.path.normcase(os.path.dirname(p)) == os.path.normcase(target) for p in paths):
+            return
+        self.run(ops.CopyJob(paths, target, move=action == "move"))
+
+    def _sidebar_drop(self, paths, pl, action):
+        self.drop(paths, pl.path, action)
+
+    def copy_to(self, move: bool) -> None:
+        """Move to… / Copy to…: pick a folder."""
+        paths = self.paths_selected()
+        if not paths:
+            return
+        title = "Select Move Destination" if move else "Select Copy Destination"
+        dest = self._ask("choose_folder", {"title": title, "start": os.path.dirname(paths[0])})
+        if dest:
+            self.run(ops.CopyJob(paths, dest, move=move))
+
+    def trash_selected(self) -> None:
+        t = self.tab
+        if t.location == "trash:":
+            self.delete_from_trash()
+            return
+        paths = self.paths_selected()
+        if paths and t.location != "other:":
+            self.run(ops.TrashJob(paths))
+
+    def delete_selected(self) -> None:
+        """Shift+Delete: delete for good, after Files' question."""
+        if self.tab.location == "trash:":
+            self.delete_from_trash()
+            return
+        paths = self.paths_selected()
+        if not paths or self.tab.location == "other:":
+            return
+        heading = (f"Are you sure you want to permanently delete “{os.path.basename(paths[0])}”?"
+                   if len(paths) == 1 else
+                   f"Are you sure you want to permanently delete the {len(paths)} selected items?")
+        if self._ask("confirm", {"title": "Delete permanently", "heading": heading,
+                                 "text": "If you delete an item, it will be permanently lost.", "button": "Delete"}):
+            self.run(ops.DeleteJob(paths))
+
+    def delete_from_trash(self) -> None:
+        items = [e.trash for e in self.tab.selected() if e.trash]
+        if not items:
+            return
+        heading = (f"Are you sure you want to permanently delete “{items[0].name}” from the Trash?"
+                   if len(items) == 1 else
+                   f"Are you sure you want to permanently delete the {len(items)} selected items from the Trash?")
+        if self._ask("confirm", {"title": "Delete from Trash", "heading": heading,
+                                 "text": "If you delete an item, it will be permanently lost.", "button": "Delete"}):
+            self.run(ops.TrashDeleteJob(items))
+
+    def restore(self, entries: list[fs.Entry]) -> None:
+        items = [e.trash for e in entries if e.trash]
+        if items:
+            self.run(ops.RestoreJob(items))
+
+    def empty_trash(self) -> None:
+        if self._ask("confirm", {"title": "Empty Trash", "heading": "Empty all items from Trash?",
+                                 "text": "All items in the Trash will be permanently deleted.",
+                                 "button": "Empty Trash"}):
+            self.run(ops.TrashDeleteJob(None))
+
+    def rename(self) -> None:
+        entries = self.tab.selected()
+        if len(entries) != 1 or entries[0].trash or entries[0].kind in ("drive", "usb"):
+            return
+        e = entries[0]
+        folder = os.path.dirname(e.path)
+        name = self._ask("name", {"title": "Rename Folder" if e.is_dir else "Rename File",
+                                  "label": "Folder name" if e.is_dir else "File name", "button": "Rename",
+                                  "folder": folder, "initial": e.name, "is_dir": e.is_dir, "current": e.name})
+        if name and name != e.name and not fs.name_problem(name, folder, e.is_dir, e.name):
+            self.run(ops.RenameJob(e.path, name))
+
+    def new_folder(self) -> None:
+        folder = self.tab.location
+        if folder in places.SPECIAL or self.tab.search is not None:
+            return
+        name = self._ask("name", {"title": "New Folder", "label": "Folder name", "button": "Create",
+                                  "folder": folder, "initial": "", "is_dir": True, "current": ""})
+        if name and not fs.name_problem(name, folder, True):
+            self.run(ops.NewFolderJob(folder, name))
+
+    def star(self, paths: list[str], on: bool) -> None:
+        places.set_starred(paths, on)
+        stars = {os.path.normcase(p) for p in places.starred()}
+        for t in self.tabs:
+            t.model.stars = stars
+            t.view.viewport().update()
+            if t.location == "starred:":
+                self.load(t)
+
+    def undo(self) -> None:
+        if self.undo_stack:
+            self.run(self.undo_stack.pop(), origin="undo")
+
+    def redo(self) -> None:
+        if self.redo_stack:
+            self.run(self.redo_stack.pop(), origin="redo")
+
+    def select_all(self):
+        self.tab.view.selectAll()
+
+    def properties(self, entries: list[fs.Entry] | None = None) -> None:
+        entries = entries or self.tab.selected()
+        if not entries:
+            loc = self.tab.location
+            if loc in places.SPECIAL:
+                return
+            try:
+                entries = [fs.entry_for(loc)]
+            except OSError:
+                return
+        from .dialogs import PropertiesDialog
+        thumb = None
+        if len(entries) == 1 and entries[0].kind == "image":
+            img = self.loader.thumbnail(entries[0])
+            if img is not None:
+                from PySide6.QtGui import QPixmap
+                thumb = QPixmap.fromImage(img.scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        dlg = PropertiesDialog(entries, self, thumb)
+        if "properties" in self.answers:
+            self.answers["properties"](dlg)
+            return
+        dlg.setAttribute(Qt.WA_DeleteOnClose)
+        dlg.show()
+
+    def bookmark(self, path: str | None = None) -> None:
+        path = path or self.tab.location
+        if path in places.SPECIAL:
+            return
+        if places.add_bookmark(path):
+            self.fill_sidebar_all()
+            self._toast(f"“{os.path.basename(os.path.normpath(path)) or path}” added to bookmarks")
+
+    def fill_sidebar_all(self):
+        for w in WINDOWS:
+            w.fill_sidebar()
+
+    def _eject(self, root: str):
+        if not places.eject(root):
+            self._message("Unable to eject", f"“{root}” couldn’t be ejected.",
+                          ["Close any program using it and try again."])
+        QTimer.singleShot(1500, self._check_drives)
+
+    # ================================================================== view
+    def set_view(self, mode: str) -> None:
+        self.view_mode = mode
+        settings.set("view", mode)
+        for t in self.tabs:
+            keep = [e.path for e in t.selected()]
+            t.stack.setCurrentWidget(t.grid if mode == "grid" else t.list)
+            t.select_paths(keep)
+        self._chrome()
+        self.tab.view.setFocus()
+
+    def set_zoom(self, level: int) -> None:
+        self.zoom = max(0, min(len(GridView.ZOOMS) - 1, level))
+        settings.set("zoom", self.zoom)
+        for t in self.tabs:
+            t.grid.set_icon_size(GridView.ZOOMS[self.zoom])
+
+    def toggle_hidden(self, on: bool | None = None) -> None:
+        self.show_hidden = (not self.show_hidden) if on is None else on
+        settings.set("show_hidden", self.show_hidden)
+        self.act["hidden"].setChecked(self.show_hidden)
+        for t in self.tabs:
+            self.load(t)
+
+    def set_sort(self, key: str) -> None:
+        self.sort = key
+        settings.set("sort", key)
+        for a_key, a in self.sort_actions.items():
+            a.setChecked(a_key == key)
+        for t in self.tabs:
+            if t.model.mode in ("folder", "starred", "trash"):
+                self.load(t)
+
+    def _sort_column(self, key: str) -> None:
+        pairs = {"name": ("name", "name_desc"), "size": ("size_desc", "size"), "mtime": ("mtime_desc", "mtime")}
+        a, b = pairs[key]
+        self.set_sort(b if self.sort == a else a)
+
+    def set_finish(self, name: str) -> None:
+        theme.set_finish(name)
+        settings.set("finish", theme.FINISH)
+        app = QApplication.instance()
+        app.setPalette(theme.palette())
+        app.setStyleSheet(theme.stylesheet())
+        for w in WINDOWS:
+            for child in w.findChildren(QWidget):
+                if hasattr(child, "restyle"):
+                    child.restyle()
+                child.update()
+            w.update()
+        for a_key, a in self.finish_actions.items():
+            a.setChecked(a_key == theme.FINISH)
+
+    def toggle_sidebar(self):
+        self.sidebar.setVisible(not self.sidebar.isVisible())
+        settings.set("sidebar", self.sidebar.isVisible())
+
+    # ================================================================== keys and menus
+    def _actions(self):
+        self.act: dict[str, QAction] = {}
+
+        def a(key, text, slot, shortcuts=(), scope="window", checkable=False):
+            act = QAction(text, self)
+            if shortcuts:
+                act.setShortcuts([QKeySequence(s) for s in shortcuts])
+            act.setCheckable(checkable)
+            act.triggered.connect(lambda checked=False: slot())
+            if scope == "files":
+                # File keys belong to the views, so Delete or Ctrl+C in a text field edits the text.
+                act.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+                self.content.addAction(act)
+            else:
+                act.setShortcutContext(Qt.WindowShortcut)
+                self.addAction(act)
+            self.act[key] = act
+            return act
+        a("new_window", "New Window", lambda: new_window(self.tab.location), ["Ctrl+N"])
+        a("new_tab", "New Tab", lambda: self.new_tab(), ["Ctrl+T"])
+        a("close_tab", "Close Tab", lambda: self.close_tab(), ["Ctrl+W"])
+        a("next_tab", "Next Tab", lambda: self.set_current_tab((self.content.currentIndex() + 1) % len(self.tabs)),
+          ["Ctrl+PgDown", "Ctrl+Tab"])
+        a("prev_tab", "Previous Tab", lambda: self.set_current_tab((self.content.currentIndex() - 1) % len(self.tabs)),
+          ["Ctrl+PgUp", "Ctrl+Shift+Tab"])
+        a("quit", "Close Window", self.close, ["Ctrl+Q"])
+        a("back", "Back", self.back, ["Alt+Left", "Back"])
+        a("back_key", "Back", self.back, ["Backspace"], scope="files")
+        a("forward", "Forward", self.forward, ["Alt+Right", "Forward"])
+        a("up", "Parent Folder", self.up, ["Alt+Up"])
+        a("home", "Home", lambda: self.go(places.home()), ["Alt+Home"])
+        a("location", "Enter Location", self.edit_location, ["Ctrl+L"])
+        a("search", "Search", lambda: self.end_search() if self.tab.search is not None and
+          self.headerbar.search.hasFocus() else self.start_search(), ["Ctrl+F"])
+        a("reload", "Reload", self.reload, ["F5", "Ctrl+R"])
+        a("hidden", "Show Hidden Files", self.toggle_hidden, ["Ctrl+H"], checkable=True)
+        self.act["hidden"].setChecked(self.show_hidden)
+        a("grid", "Grid View", lambda: self.set_view("grid"), ["Ctrl+1"])
+        a("list", "List View", lambda: self.set_view("list"), ["Ctrl+2"])
+        a("zoom_in", "Zoom In", lambda: self.set_zoom(self.zoom + 1), ["Ctrl++", "Ctrl+="])
+        a("zoom_out", "Zoom Out", lambda: self.set_zoom(self.zoom - 1), ["Ctrl+-"])
+        a("zoom_reset", "Reset Size", lambda: self.set_zoom(2), ["Ctrl+0"])
+        a("sidebar", "Show Sidebar", self.toggle_sidebar, ["F9"])
+        a("menu", "Main Menu", lambda: self._main_menu(), ["F10"])
+        a("bookmark", "Bookmark this Location", self.bookmark, ["Ctrl+D"])
+        a("undo", "Undo", self.undo, ["Ctrl+Z"])
+        a("redo", "Redo", self.redo, ["Ctrl+Shift+Z", "Ctrl+Y"])
+        a("shortcuts", "Keyboard Shortcuts", self._shortcuts, ["Ctrl+?", "Ctrl+F1"])
+        a("open", "Open", self.open_selected, ["Return", "Enter"], scope="files")
+        a("open_tab", "Open in New Tab", lambda: self.open_selected(new_tab=True), ["Ctrl+Return"], scope="files")
+        a("copy", "Copy", self.copy, ["Ctrl+C"], scope="files")
+        a("cut", "Cut", lambda: self.copy(cut=True), ["Ctrl+X"], scope="files")
+        a("paste", "Paste", self.paste, ["Ctrl+V"], scope="files")
+        a("select_all", "Select All", self.select_all, ["Ctrl+A"], scope="files")
+        a("rename", "Rename…", self.rename, ["F2"], scope="files")
+        a("trash", "Move to Trash", self.trash_selected, ["Delete"], scope="files")
+        a("delete", "Delete Permanently…", self.delete_selected, ["Shift+Delete"], scope="files")
+        a("new_folder", "New Folder…", self.new_folder, ["Ctrl+Shift+N"])
+        a("properties", "Properties", self.properties, ["Ctrl+I", "Alt+Return"], scope="files")
+        a("escape", "Clear", self._escape, ["Escape"], scope="files")
+        self.sort_actions = {}
+        for key, text in fs.SORTS.items():
+            act = QAction(text, self, checkable=True)
+            act.setChecked(key == self.sort)
+            act.triggered.connect(lambda _c=False, k=key: self.set_sort(k))
+            self.sort_actions[key] = act
+        self.finish_actions = {}
+        for key in theme.FINISHES:
+            act = QAction(key.upper(), self, checkable=True)
+            act.setChecked(key == theme.FINISH)
+            act.triggered.connect(lambda _c=False, k=key: self.set_finish(k))
+            self.finish_actions[key] = act
+
+    def _escape(self):
+        if self.tab.search is not None:
+            self.end_search()
+        else:
+            self.tab.view.clearSelection()
+
+    def _key(self, name: str) -> None:
+        if name == "back":
+            self.back()
+        elif name == "forward":
+            self.forward()
+        elif name == "search":
+            if self.tab.search is not None:
+                self.end_search()
+            else:
+                self.start_search()
+        elif name == "view":
+            self.set_view("list" if self.view_mode == "grid" else "grid")
+        elif name == "operations":
+            if self.popover.isVisible():
+                self.popover.hide()
+            else:
+                self._tick()
+                self._place_popover()
+                self.popover.show()
+        elif name == "menu":
+            self._main_menu()
+
+    def _main_menu(self) -> QMenu:
+        """Files' main menu."""
+        m = QMenu(self)
+        m.addAction(self.act["new_window"])
+        m.addAction(self.act["new_tab"])
+        m.addSeparator()
+        u = m.addAction(f"Undo {self.undo_stack[-1].undo_label}" if self.undo_stack else "Undo", self.undo)
+        u.setShortcut(QKeySequence("Ctrl+Z"))
+        u.setEnabled(bool(self.undo_stack))
+        r = m.addAction(f"Redo {self.redo_stack[-1].undo_label}" if self.redo_stack else "Redo", self.redo)
+        r.setShortcut(QKeySequence("Ctrl+Shift+Z"))
+        r.setEnabled(bool(self.redo_stack))
+        m.addSeparator()
+        m.addAction(self.act["hidden"])
+        sort = m.addMenu("Sort")
+        for act in self.sort_actions.values():
+            sort.addAction(act)
+        size = m.addMenu("Icon Size")
+        for k in ("zoom_in", "zoom_out", "zoom_reset"):
+            size.addAction(self.act[k])
+        finish = m.addMenu("Finish")
+        for act in self.finish_actions.values():
+            finish.addAction(act)
+        m.addSeparator()
+        m.addAction(self.act["shortcuts"])
+        m.addAction("About PR7-E", self._about)
+        k = self.headerbar.keys["menu"]
+        if "menu" in self.answers:
+            self.answers["menu"](m)
+        else:
+            m.popup(k.mapToGlobal(QPoint(k.width() - m.sizeHint().width(), k.height())))
+        return m
+
+    def _view_menu(self, tab: Tab, view, pos) -> QMenu:
+        idx = view.indexAt(pos)
+        if idx.isValid() and not view.selectionModel().isSelected(idx):
+            view.selectionModel().select(idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
+        entries = tab.selected() if idx.isValid() else []
+        gpos = view.viewport().mapToGlobal(pos)
+        return self._item_menu(entries, gpos) if entries else self._background_menu(gpos)
+
+    def _item_menu(self, entries: list[fs.Entry], gpos=None) -> QMenu:
+        """Files' right-click menu for the selection."""
+        t = self.tab
+        m = QMenu(self)
+        if t.location == "trash:":
+            m.addAction("Restore From Trash", lambda: self.restore(entries))
+            m.addAction("Delete From Trash…", self.delete_from_trash)
+            m.addSeparator()
+            m.addAction(self.act["properties"])
+            return self._popup(m, gpos)
+        if t.location == "other:":
+            m.addAction("Open", lambda: self.go(entries[0].path))
+            m.addAction("Open in New Tab", lambda: self.new_tab(entries[0].path))
+            if entries[0].kind == "usb":
+                m.addAction("Eject", lambda: self._eject(entries[0].path))
+            m.addSeparator()
+            m.addAction(self.act["properties"])
+            return self._popup(m, gpos)
+        files = [e for e in entries if not e.is_dir]
+        folders = [e for e in entries if e.is_dir]
+        if folders and not files:
+            m.addAction("Open", self.open_selected).setShortcut(QKeySequence("Return"))
+            m.addAction("Open in New Tab", lambda: self.open_selected(new_tab=True)).setShortcut(
+                QKeySequence("Ctrl+Return"))
+            m.addAction("Open in New Window", lambda: [new_window(e.path) for e in folders])
+        else:
+            app = system.default_app(files[0].path) if len(files) == 1 else None
+            m.addAction(f"Open With {app}" if app else "Open", self.open_selected).setShortcut(QKeySequence("Return"))
+            if len(files) == 1:
+                m.addAction("Open With Other Application", lambda: system.open_with(files[0].path))
+        if t.search is not None or t.location in ("recent:", "starred:"):
+            if len(entries) == 1:
+                m.addAction("Open Item Location", lambda: self.open_location(entries[0]))
+        m.addSeparator()
+        m.addAction(self.act["cut"])
+        m.addAction(self.act["copy"])
+        m.addAction("Move to…", lambda: self.copy_to(move=True))
+        m.addAction("Copy to…", lambda: self.copy_to(move=False))
+        m.addAction(self.act["trash"])
+        if len(folders) == 1 and not files and self.clipboard_files()[0]:
+            m.addAction("Paste Into Folder", lambda: self.paste(folders[0].path))
+        m.addSeparator()
+        if len(entries) == 1:
+            m.addAction(self.act["rename"])
+        later = m.addAction("Compress…")
+        later.setEnabled(False)  # PR7-E 0.2
+        if len(files) == 1 and files[0].kind == "archive":
+            m.addAction("Extract Here").setEnabled(False)
+        m.addSeparator()
+        on = all(t.model.starred(e) for e in entries)
+        m.addAction("Unstar" if on else "Star", lambda: self.star([e.path for e in entries], not on))
+        m.addAction(self.act["properties"])
+        m.addSeparator()
+        more = m.addAction("Show More Options")
+        more.setShortcut(QKeySequence("Shift+F10"))
+        more.setEnabled(False)  # PR7-E 0.2: the full Windows menu
+        return self._popup(m, gpos)
+
+    def _background_menu(self, gpos=None) -> QMenu:
+        """Files' menu for the folder itself (empty space, and the path bar's folder menu)."""
+        t = self.tab
+        m = QMenu(self)
+        if t.location == "trash:":
+            m.addAction("Empty Trash…", self.empty_trash).setEnabled(bool(t.model.rows))
+            m.addAction(self.act["select_all"])
+            return self._popup(m, gpos)
+        real = t.location not in places.SPECIAL and t.search is None
+        # Menu-only copies: disabling the window's own actions would switch their keys off too.
+        nf = m.addAction("New Folder\u2026", self.new_folder)
+        nf.setShortcut(QKeySequence("Ctrl+Shift+N"))
+        nf.setEnabled(real)
+        p = m.addAction("Paste", self.paste)
+        p.setShortcut(QKeySequence("Ctrl+V"))
+        p.setEnabled(real and bool(self.clipboard_files()[0]))
+        m.addAction(self.act["select_all"])
+        m.addSeparator()
+        if real:
+            m.addAction("Add to Bookmarks", self.bookmark).setShortcut(QKeySequence("Ctrl+D"))
+            m.addAction("Open in Terminal", lambda: system.terminal(t.location))
+            m.addSeparator()
+            m.addAction(self.act["properties"])
+        return self._popup(m, gpos)
+
+    def _sidebar_menu(self, pos) -> QMenu | None:
+        pl = self.sidebar.place_at(pos)
+        if pl is None:
+            return None
+        m = QMenu(self)
+        m.addAction("Open", lambda: self.go(pl.path))
+        m.addAction("Open in New Tab", lambda: self.new_tab(pl.path))
+        m.addAction("Open in New Window", lambda: new_window(pl.path))
+        if pl.kind == "bookmark":
+            m.addSeparator()
+            m.addAction("Rename…", lambda: self._rename_bookmark(pl))
+            m.addAction("Remove from Bookmarks", lambda: (places.remove_bookmark(pl.path), self.fill_sidebar_all()))
+        if pl.eject:
+            m.addSeparator()
+            m.addAction("Eject", lambda: self._eject(pl.path))
+        if pl.path == "trash:":
+            m.addSeparator()
+            m.addAction("Empty Trash…", self.empty_trash)
+        return self._popup(m, self.sidebar.viewport().mapToGlobal(pos))
+
+    def _rename_bookmark(self, pl):
+        name = self._ask("name", {"title": "Rename Bookmark", "label": "Name", "button": "Rename", "folder": "",
+                                  "initial": pl.label, "is_dir": True, "current": pl.label, "bookmark": True})
+        if name:
+            items = places.bookmarks()
+            for b in items:
+                if os.path.normcase(b["path"]) == os.path.normcase(pl.path):
+                    b["name"] = name
+            places.set_bookmarks(items)
+            self.fill_sidebar_all()
+
+    def _popup(self, m: QMenu, gpos) -> QMenu:
+        if "context" in self.answers:
+            self.answers["context"](m)
+        elif gpos is not None:
+            m.popup(gpos)
+        return m
+
+    # ================================================================== questions and messages
+    def _ask(self, kind: str, payload):
+        if kind in self.answers:
+            return self.answers[kind](payload)
+        from . import dialogs
+        if kind == "conflict":
+            dlg = dialogs.ConflictDialog(payload, self)
+            return dlg.answer() if dlg.exec() else None
+        if kind == "name":
+            if payload.get("bookmark"):
+                from PySide6.QtWidgets import QInputDialog
+                text, ok = QInputDialog.getText(self, payload["title"], payload["label"], text=payload["initial"])
+                return text.strip() if ok and text.strip() else None
+            dlg = dialogs.NameDialog(payload["title"], payload["label"], payload["button"], payload["folder"],
+                                     payload["initial"], payload["is_dir"], payload["current"], self)
+            return dlg.answer() if dlg.exec() else None
+        if kind == "confirm":
+            dlg = dialogs.ConfirmDialog(payload["title"], payload["heading"], payload["text"], payload["button"],
+                                        self)
+            return bool(dlg.exec())
+        if kind == "choose_folder":
+            return QFileDialog.getExistingDirectory(self, payload["title"], payload["start"]) or None
+        if kind == "message":
+            dialogs.MessageDialog(*payload, self).exec()
+            return None
+        return None
+
+    def _message(self, title: str, heading: str, lines: list[str]) -> None:
+        self._ask("message", (title, heading, lines))
+
+    def _toast(self, text: str) -> None:
+        """A short note in the corner (Files' toasts), until the selection changes."""
+        self.status.show_text(text)
+
+    def _shortcuts(self):
+        from .dialogs import ShortcutsDialog
+        ShortcutsDialog(self).exec()
+
+    def _about(self):
+        from .dialogs import AboutDialog
+        AboutDialog(self).exec()
+
+    # ================================================================== window
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.status.place()
+        self.empty.setGeometry(self.content.rect())
+        if self.popover.isVisible():
+            self._place_popover()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.empty.setGeometry(self.content.rect())
+        self.status.place()
+
+    def closeEvent(self, e):
+        if self.runner.running:
+            if not self._ask("confirm", {"title": "Operations running", "heading": "Close PR7-E while files are "
+                                         "still being copied or moved?", "text": "Running operations will be "
+                                         "cancelled.", "button": "Cancel Operations"}):
+                e.ignore()
+                return
+            for j in self.runner.running:
+                j.cancel()
+        settings.set("geometry", bytes(self.saveGeometry()).hex())
+        self.searcher.stop()
+        self.loader.clear_queue()
+        if self in WINDOWS:
+            WINDOWS.remove(self)
+        super().closeEvent(e)
+
+
+def new_window(location: str | None = None) -> MainWindow:
+    w = MainWindow([location] if location else None)
+    w.show()
+    return w
