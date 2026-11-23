@@ -646,7 +646,8 @@ def test_real_network_share(win, home, tmp_path):
     w = win
     w.connect_server(unc)
     assert w.tab.location == unc and "on the share.txt" in names(w)
-    assert w.headerbar.path.segments[0][0] == "share"
+    segs = w.headerbar.path.segments
+    assert (segs[0][0], segs[0][2]) == ("desktop", "\\\\localhost") and segs[1][0] == "share"  # computer, share
     assert any(pl.kind == "share" for pl in w.sidebar.model().rows)
     w.forget_share(places.share_root(unc))
     assert not any(pl.kind == "share" for pl in w.sidebar.model().rows)
