@@ -135,6 +135,8 @@ class Server:
     session: object = None
     home: str = "/"
     lock: threading.RLock = field(default_factory=threading.RLock)
+    aux_session: object = None                                        # thumbnails and item counts
+    aux_lock: threading.RLock = field(default_factory=threading.RLock)
 
     @property
     def label(self) -> str:
@@ -159,6 +161,19 @@ class Server:
                         raise
                     self.session = None
 
+    def aux(self, name: str, *args):
+        """Like call(), on the second connection (thumbnails and counts never hold up browsing or a copy)."""
+        with self.aux_lock:
+            for attempt in (0, 1):
+                try:
+                    if self.aux_session is None or not self.aux_session.connected:
+                        self.aux_session = self.new_session()
+                    return getattr(self.aux_session, name)(*args)
+                except remote.RemoteError:
+                    if attempt:
+                        raise
+                    self.aux_session = None
+
     def list(self, path: str) -> list[fs.Entry]:
         out = []
         for e in self.call("list", path):
@@ -169,6 +184,13 @@ class Server:
         return out
 
     def close(self):
+        with self.aux_lock:
+            if self.aux_session is not None:
+                try:
+                    self.aux_session.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self.aux_session = None
         with self.lock:
             if self.session is not None:
                 try:

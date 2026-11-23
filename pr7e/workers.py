@@ -134,6 +134,61 @@ class _ShellThumb(QRunnable):
         self.signals.thumb.emit(self.path, self.mtime, img)
 
 
+class _RemoteThumb(QRunnable):
+    """A picture on a server: downloaded on the server's second connection, then read like a local one."""
+
+    def __init__(self, loc, mtime, size, signals):
+        super().__init__()
+        self.loc, self.mtime, self.size, self.signals = loc, mtime, size, signals
+
+    def run(self):
+        import tempfile
+        from . import servers
+        img = None
+        tmp = None
+        try:
+            srv = servers.server_for(self.loc)
+            if srv is not None:
+                fd, tmp = tempfile.mkstemp(prefix="pr7e-thumb-")
+                os.close(fd)
+                srv.aux("download", servers.split(self.loc)[1], tmp, 0, None, None)
+                r = QImageReader(tmp)
+                r.setAutoTransform(True)
+                s = r.size()
+                if s.isValid() and s.width() > 0:
+                    k = min(1.0, self.size / max(s.width(), s.height()))
+                    r.setScaledSize(QSize(max(1, int(s.width() * k)), max(1, int(s.height() * k))))
+                i = r.read()
+                img = None if i.isNull() else i
+        except Exception:  # noqa: BLE001 - no thumbnail: the icon stays
+            img = None
+        finally:
+            if tmp:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        self.signals.thumb.emit(self.loc, self.mtime, img)
+
+
+class _RemoteCount(QRunnable):
+    def __init__(self, loc, show_hidden, signals):
+        super().__init__()
+        self.loc, self.show_hidden, self.signals = loc, show_hidden, signals
+
+    def run(self):
+        from . import servers
+        n = -1
+        try:
+            srv = servers.server_for(self.loc)
+            if srv is not None:
+                n = sum(1 for e in srv.aux("list", servers.split(self.loc)[1])
+                        if e.name not in (".", "..") and (self.show_hidden or not e.name.startswith(".")))
+        except Exception:  # noqa: BLE001
+            n = -1
+        self.signals.count.emit(self.loc, n)
+
+
 class _Count(QRunnable):
     def __init__(self, path, show_hidden, signals):
         super().__init__()
@@ -152,6 +207,7 @@ class Loader(QObject):
     count_ready = Signal(str, int)
     MAX_BYTES = 80_000_000      # bigger pictures keep their icon (Qt decodes them whole)
     THUMB = 256                 # px, enough for the largest zoom
+    MAX_REMOTE_BYTES = 15_000_000  # server pictures bigger than this keep their icon
     SHELL_KINDS = {"video", "document", "image"}  # Windows makes these (images Qt can't read: HEIC, SVG...)
 
     def __init__(self):
@@ -175,6 +231,11 @@ class Loader(QObject):
         if key in self.pending or e.is_dir:
             return None
         ext = e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""
+        if "://" in e.path:  # on a server: pictures only, and not huge ones (each is downloaded)
+            if e.kind == "image" and ext in fs.IMAGE_EXTS and 0 < e.size <= self.MAX_REMOTE_BYTES:
+                self.pending.add(key)
+                self.pool.start(_RemoteThumb(e.path, e.mtime, self.THUMB, self.signals))
+            return None
         if e.kind == "image" and ext in fs.IMAGE_EXTS and e.size <= self.MAX_BYTES:
             self.pending.add(key)
             self.pool.start(_Thumb(e.path, e.mtime, self.THUMB, self.signals))
@@ -191,7 +252,7 @@ class Loader(QObject):
         self.thumb_ready.emit(path)
 
     def count(self, path: str, show_hidden: bool) -> None:
-        self.pool.start(_Count(path, show_hidden, self.signals))
+        self.pool.start((_RemoteCount if "://" in path else _Count)(path, show_hidden, self.signals))
 
     def clear_queue(self) -> None:
         """Leaving a folder: forget work not started yet."""

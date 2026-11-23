@@ -4,7 +4,7 @@ import sys
 import time
 
 import pytest
-from PySide6.QtCore import QMimeData, QUrl
+from PySide6.QtCore import QMimeData, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -342,7 +342,8 @@ def test_watcher_sees_outside_changes(win, home):
 def test_other_locations_and_bookmarks(win, home):
     w = win
     w.go("other:")
-    assert w.tab.model.rows and all(e.kind in ("drive", "usb") for e in w.tab.model.rows)
+    assert w.tab.model.rows and all(e.kind in ("drive", "usb") for e in w.tab.model.rows[:-1])
+    assert (w.tab.model.rows[-1].name, w.tab.model.rows[-1].path) == ("Network", "network:")
     w.go(str(home / "Music"))
     w.bookmark()
     assert any(pl.kind == "bookmark" and pl.label == "Music" for pl in w.sidebar.model().rows)
@@ -736,3 +737,104 @@ def test_real_wallpaper_call(qapp, tmp_path):
     img.fill(QColor("#DE0639"))
     img.save(str(tmp_path / "w.bmp"))
     assert places.set_wallpaper(str(tmp_path / "w.bmp"), persist=False)
+
+
+def test_mouse_back_and_forward_buttons(win, home):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    w = win
+    w.go(str(home / "Music"))
+    w.go(str(home / "Music" / "Paragon"))
+    view = w.tab.view.viewport()
+
+    def click(button):
+        for kind in (QMouseEvent.Type.MouseButtonPress, QMouseEvent.Type.MouseButtonRelease):
+            ev = QMouseEvent(kind, QPointF(20, 20), QPointF(20, 20), button, button, Qt.NoModifier)
+            QApplication.sendEvent(view, ev)
+    click(Qt.BackButton)
+    assert w.tab.location == str(home / "Music")
+    click(Qt.BackButton)
+    assert w.tab.location == str(home)
+    click(Qt.ForwardButton)
+    assert w.tab.location == str(home / "Music")
+    # Also over the sidebar and the header, as in Files.
+    for kind in (QMouseEvent.Type.MouseButtonPress, QMouseEvent.Type.MouseButtonRelease):
+        QApplication.sendEvent(w.sidebar.viewport(), QMouseEvent(kind, QPointF(5, 5), QPointF(5, 5), Qt.BackButton,
+                                                                 Qt.BackButton, Qt.NoModifier))
+    assert w.tab.location == str(home)
+
+
+def test_browse_the_network(win, home, monkeypatch):
+    from pr7e import places
+    w = win
+    monkeypatch.setattr(places, "network_computers", lambda: [("NAS", r"\\NAS"), ("STUDIO-PC", r"\\STUDIO-PC")])
+    refusals = []
+
+    def shares(computer):
+        if computer == r"\\STUDIO-PC" and not refusals:
+            refusals.append(computer)
+            raise OSError(5, "Access is denied.", computer)
+        return [("music", "All the music"), ("photos", "")]
+    monkeypatch.setattr(places, "computer_shares", shares)
+    logins = []
+    monkeypatch.setattr(places, "connect_share", lambda unc, u, p, r: logins.append((unc, u, p)))
+    w.go("other:")
+    w.tab.select_paths(["network:"])
+    w.open_selected()
+    assert w.tab.location == "network:" and [(e.name, e.kind) for e in w.tab.model.rows] == [
+        ("NAS", "computer"), ("STUDIO-PC", "computer")]
+    assert w.tab.model.columns() == ["NAME", "DESCRIPTION"]
+    w.tab.select_paths([r"\\NAS"])
+    w.open_selected()
+    assert w.tab.location == r"\\NAS" and [(e.name, e.path, e.extra) for e in w.tab.model.rows] == [
+        ("music", r"\\NAS\music", "All the music"), ("photos", r"\\NAS\photos", "")]
+    assert [s[1] for s in w.headerbar.path.segments] == ["Network", "NAS"]
+    assert w.windowTitle() == "NAS"
+    w.up()
+    assert w.tab.location == "network:"
+    # A computer that wants a login first: asked, connected through IPC$, then listed.
+    w.answers["login"] = lambda p: {"user": "me", "password": "pw", "remember": False}
+    w.go(r"\\STUDIO-PC")
+    assert logins == [(r"\\STUDIO-PC\IPC$", "me", "pw")] and [e.name for e in w.tab.model.rows] == ["music",
+                                                                                                   "photos"]
+
+
+def test_server_stars_thumbnails_and_counts(win, home, server, server_root):
+    from PySide6.QtGui import QColor, QImage
+    from pr7e import places, servers
+    from pr7e.main_window import load_prefs
+    img = QImage(300, 200, QImage.Format_RGB32)
+    img.fill(QColor("#DE0639"))
+    img.save(str(server_root / "music" / "cover.png"))
+    w = win
+    k = connected(w, server)
+    w.go(servers.join(k, "/music"))
+    # "On this computer only" (the default): nothing is downloaded or counted on servers.
+    e = next(x for x in w.tab.model.rows if x.name == "elseworld")
+    assert e.size == -1
+    assert w.tab.model.data(w.tab.model.index(w.tab.model.row_of(servers.join(k, "/music/cover.png")), 0),
+                            Qt.UserRole + 1) is None
+    # "Always": counted and thumbnailed on the second connection.
+    w.set_prefs({**load_prefs(), "thumbnails": "always", "counts": "always"})
+    assert wait(lambda: next(x for x in w.tab.model.rows if x.name == "elseworld").size == 1)
+    idx = w.tab.model.index(w.tab.model.row_of(servers.join(k, "/music/cover.png")), 0)
+    w.tab.model.data(idx, Qt.UserRole + 1)
+    assert wait(lambda: w.tab.model.data(idx, Qt.UserRole + 1) is not None)
+    assert w.tab.model.data(idx, Qt.UserRole + 1).width() == 256
+    # Stars: shown in the folder and in Starred, from what was saved, even after disconnecting.
+    assert w.tab.model.columns()[-1] == ""
+    w.star([servers.join(k, "/music/notes.txt")], True)
+    assert w.tab.model.starred(next(x for x in w.tab.model.rows if x.name == "notes.txt"))
+    w.disconnect_server(k + "/")
+    w.go("starred:")
+    assert [(x.name, x.size) for x in w.tab.model.rows] == [("notes.txt", len(b"server notes"))]
+    assert places.star_meta()[servers.join(k, "/music/notes.txt")]["is_dir"] is False
+
+
+@pytest.mark.skipif(sys.platform != "win32" or not os.environ.get("CI"), reason="Windows' network calls: CI only")
+def test_real_network_calls():
+    from pr7e import places, winshell
+    assert isinstance(places.network_computers(), list)       # whatever the runner's network has (often nothing)
+    hidden = [n for n, _r in winshell.computer_shares(r"\\localhost", hidden=True)]
+    assert any(n.upper() in ("C$", "ADMIN$") for n in hidden), hidden
+    assert all(not n.endswith("$") for n, _r in places.computer_shares(r"\\localhost"))

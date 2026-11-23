@@ -51,8 +51,9 @@ class EntryModel(QAbstractTableModel):
                "starred": ["NAME", "LOCATION", "SIZE", "MODIFIED", ""],
                "trash": ["NAME", "ORIGINAL LOCATION", "SIZE", "DELETED"],
                "other": ["NAME", "SPACE"],
-               "remote": ["NAME", "SIZE", "MODIFIED"],       # a server folder: no stars there
-               "remote_search": ["NAME", "LOCATION", "SIZE", "MODIFIED"]}
+               "remote": ["NAME", "SIZE", "MODIFIED", ""],   # a server folder (stars too)
+               "remote_search": ["NAME", "LOCATION", "SIZE", "MODIFIED"],
+               "network": ["NAME", "DESCRIPTION"]}             # Network, a computer's shares
 
     def __init__(self, loader, parent=None):
         super().__init__(parent)
@@ -125,13 +126,13 @@ class EntryModel(QAbstractTableModel):
                 return e.name
             if col in ("LOCATION", "ORIGINAL LOCATION"):
                 return e.location
-            if col in ("SIZE", "SPACE"):
+            if col in ("SIZE", "SPACE", "DESCRIPTION"):
                 return fs.size_text(e)
             if col in ("MODIFIED", "DELETED"):
                 return fs.date_text(e.mtime)
             return ""
         if role == Qt.DecorationRole and col == "NAME":
-            return file_pixmap(e.kind, 18)
+            return file_pixmap("desktop" if e.kind == "computer" else e.kind, 18)
         if role == Qt.TextAlignmentRole and col == "SIZE":
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.ForegroundRole and col != "NAME":
@@ -278,7 +279,7 @@ class GridDelegate(QStyledItemDelegate):
             p.drawRoundedRect(t.adjusted(.5, .5, -.5, -.5), 4, 4)
             corner = t
         else:
-            p.drawPixmap(box.toRect(), file_pixmap(e.kind, self.icon))
+            p.drawPixmap(box.toRect(), file_pixmap("desktop" if e.kind == "computer" else e.kind, self.icon))
         model = index.model()
         if hasattr(model, "starred") and model.starred(e):
             draw_icon(p, "star", QRectF(corner.right() - 13, corner.top() - 5, 18, 18), QColor(theme.BACKGROUND), 1.2,
@@ -422,7 +423,7 @@ class ListView(DropMixin, QTreeView):
         for i, c in enumerate(self.model().columns()):
             h.setSectionResizeMode(i, QHeaderView.Stretch if c == "NAME" else QHeaderView.Interactive)
             if c != "NAME":
-                self.setColumnWidth(i, self.WIDTHS.get(c, 120))
+                self.setColumnWidth(i, self.WIDTHS.get(c, 320 if c == "DESCRIPTION" else 120))
 
     def _header(self, section):
         col = self.model().columns()[section]

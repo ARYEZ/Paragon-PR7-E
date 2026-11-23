@@ -331,7 +331,7 @@ SHORTCUTS = [
     ("Opening", [("New window", "Ctrl+N"), ("New tab", "Ctrl+T"), ("Close tab", "Ctrl+W"),
                  ("Go to previous / next tab", "Ctrl+Page Up / Ctrl+Page Down"), ("Open in new tab", "Ctrl+Return"),
                  ("Close window", "Ctrl+Q")]),
-    ("Navigation", [("Back / forward", "Alt+Left / Alt+Right"), ("Back", "Backspace"), ("Parent folder", "Alt+Up"),
+    ("Navigation", [("Back / forward", "Alt+Left / Alt+Right, mouse side buttons"), ("Back", "Backspace"), ("Parent folder", "Alt+Up"),
                     ("Home", "Alt+Home"), ("Enter a location", "Ctrl+L"), ("Search", "Ctrl+F or start typing"),
                     ("Reload", "F5 / Ctrl+R"), ("Bookmark this location", "Ctrl+D")]),
     ("View", [("Grid view / list view", "Ctrl+1 / Ctrl+2"), ("Zoom in / out / reset", "Ctrl++ / Ctrl+- / Ctrl+0"),

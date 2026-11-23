@@ -56,6 +56,13 @@ Linux for tests. The owner writes Python; explain the why of changes.
   open folder's sorted contents after it with `Entry.depth`; `Tab.expanded` holds the open folders; `ListDelegate`
   paints the indent and arrow, `ListView.expand` asks to open / close. New Document: `places.templates()` (Windows'
   FOLDERID_Templates) and `ops.NewDocumentJob`; Set as Background: `places.set_wallpaper` (SPI_SETDESKWALLPAPER).
+- Network: "network:" (in places.SPECIAL) lists `places.network_computers()` (winshell.network_items: Explorer's
+  Network folder, FOLDERID_NetworkFolder, through IShellFolder) and a computer location "\\\\NAME"
+  (`places.is_computer`) lists `computer_shares` (NetShareEnum level 1, disk shares, no $ ones); access denied ->
+  login -> `connect_share(\\\\NAME\\IPC$)` -> again. Both via `_load_network` on a worker thread, model mode
+  "network". Mouse side buttons: the window filters the whole application's MouseButtonPress (Back/ForwardButton).
+  Server stars keep `places.star_meta()`; server thumbnails / counts (pref "always" only) use `Server.aux`, a
+  second session.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

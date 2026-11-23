@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+- **The mouse's back and forward buttons** go back and forward anywhere in the window, as in Files (they were
+  swallowed by the views).
+- **Network** (Other Locations): the computers Windows sees on the network, as on Explorer's Network page; open one
+  for its shared folders (logs in first when it asks, through Windows' IPC$ connection); the path bar has the
+  computer as a step and Up goes from a share to its computer to Network.
+- **Server folders**: stars (Starred shows them even while not connected), and with Show thumbnails / Count items
+  set to Always, picture thumbnails and folder counts, fetched on a second connection so browsing never waits.
+
 ## 0.6.0
 
 - **Expand folders in list view** (Preferences, off by default as in Files): folders get an arrow that opens them in

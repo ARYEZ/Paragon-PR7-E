@@ -210,7 +210,7 @@ def items_text(n: int) -> str:
 
 
 def size_text(e: Entry) -> str:
-    if e.kind in ("drive", "usb"):
+    if e.kind in ("drive", "usb", "computer", "network") or (e.kind == "share" and e.extra):
         return e.extra
     return items_text(e.size) if e.is_dir else human_size(e.size)
 

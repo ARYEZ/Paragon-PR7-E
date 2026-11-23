@@ -336,3 +336,93 @@ def show_menu(paths: list[str], owner: int = 0, extended: bool = False, folder: 
         _release(pcm)
         for pd in pidls:
             ole32.CoTaskMemFree(pd)
+
+
+# --------------------------------------------------------------------------- the Network folder
+FOLDERID_NETWORK = "D20BEEC4-5CA8-4905-AE3B-BF251EA09B53"
+SHCONTF_FOLDERS, SHCONTF_NONFOLDERS = 0x20, 0x40
+SHGDN_NORMAL, SHGDN_FORPARSING = 0x0, 0x8000
+
+
+def network_items() -> list[tuple[str, str]]:
+    """(name, parsing name) of what Explorer's Network page shows (computers are "\\\\\\\\NAME"; media devices and
+    routers have other parsing names). Windows finds them (WSD, NetBIOS, SSDP), which can take a few seconds."""
+    if not available:
+        return []
+    com_init()
+    shell32.SHGetKnownFolderIDList.argtypes = [POINTER(GUID), wintypes.DWORD, c_void_p, POINTER(c_void_p)]
+    shell32.SHGetKnownFolderIDList.restype = HRESULT
+    shell32.SHBindToObject.argtypes = [c_void_p, c_void_p, c_void_p, POINTER(GUID), POINTER(c_void_p)]
+    shell32.SHBindToObject.restype = HRESULT
+    shlwapi = ctypes.windll.shlwapi
+    shlwapi.StrRetToBufW.argtypes = [c_void_p, c_void_p, c_wchar_p, c_uint]
+    shlwapi.StrRetToBufW.restype = HRESULT
+    pidl, psf, enum = c_void_p(), c_void_p(), c_void_p()
+    out = []
+    try:
+        shell32.SHGetKnownFolderIDList(byref(_guid(FOLDERID_NETWORK)), 0, None, byref(pidl))
+        shell32.SHBindToObject(None, pidl, None, byref(IID_IShellFolder), byref(psf))
+        _method(psf, 4, HRESULT, wintypes.HWND, wintypes.DWORD, POINTER(c_void_p))(
+            None, SHCONTF_FOLDERS | SHCONTF_NONFOLDERS, byref(enum))
+        if not enum:
+            return []
+        nxt = _method(enum, 3, HRESULT, c_ulong, POINTER(c_void_p), POINTER(c_ulong))
+        display = _method(psf, 11, HRESULT, c_void_p, wintypes.DWORD, c_void_p)
+        strret = (ctypes.c_ubyte * 272)()   # STRRET: a UINT and a 260-byte union
+        buf = ctypes.create_unicode_buffer(1024)
+        while True:
+            child, got = c_void_p(), c_ulong()
+            if nxt(1, byref(child), byref(got)) != 0 or not got.value:
+                break
+            try:
+                names = []
+                for flags in (SHGDN_NORMAL, SHGDN_FORPARSING):
+                    display(child, flags, strret)
+                    shlwapi.StrRetToBufW(strret, child, buf, 1024)
+                    names.append(buf.value)
+                out.append((names[0], names[1]))
+            except OSError:
+                pass
+            finally:
+                ole32.CoTaskMemFree(child)
+    except OSError:
+        return out
+    finally:
+        _release(enum)
+        _release(psf)
+        if pidl:
+            ole32.CoTaskMemFree(pidl)
+    return out
+
+
+def computer_shares(computer: str, hidden: bool = False) -> list[tuple[str, str]]:
+    """(share name, remark) of a computer's shared folders (NetShareEnum, level 1): disk shares only; the hidden
+    ones (C$, ADMIN$, names ending in $) only with `hidden`. Raises OSError (5 = access denied: log in first)."""
+    if not available:
+        return []
+
+    class SHARE_INFO_1(Structure):
+        _fields_ = [("netname", c_wchar_p), ("type", wintypes.DWORD), ("remark", c_wchar_p)]
+    netapi = ctypes.windll.netapi32
+    netapi.NetShareEnum.argtypes = [c_wchar_p, wintypes.DWORD, POINTER(c_void_p), wintypes.DWORD,
+                                    POINTER(wintypes.DWORD), POINTER(wintypes.DWORD), POINTER(wintypes.DWORD)]
+    netapi.NetApiBufferFree.argtypes = [c_void_p]
+    buf, read, total, resume = c_void_p(), wintypes.DWORD(), wintypes.DWORD(), wintypes.DWORD()
+    res = netapi.NetShareEnum(computer, 1, byref(buf), 0xFFFFFFFF, byref(read), byref(total), byref(resume))
+    try:
+        if res not in (0, 234):  # NERR_Success, ERROR_MORE_DATA
+            raise OSError(res, {5: "Access is denied.", 53: "The computer can’t be found.",
+                                1326: "The user name or password is wrong."}.get(res, ctypes.FormatError(res).strip()),
+                          computer)
+        out = []
+        if buf:
+            items = ctypes.cast(buf, POINTER(SHARE_INFO_1 * read.value)).contents
+            for it in items:
+                disk = (it.type & 0xFF) == 0           # STYPE_DISKTREE
+                special = bool(it.type & 0x80000000) or (it.netname or "").endswith("$")
+                if disk and (hidden or not special):
+                    out.append((it.netname, it.remark or ""))
+        return sorted(out, key=lambda x: x[0].lower())
+    finally:
+        if buf:
+            netapi.NetApiBufferFree(buf)

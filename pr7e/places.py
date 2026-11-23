@@ -24,7 +24,8 @@ class Place:
     kind: str = "place"        # place, bookmark, drive
 
 
-SPECIAL = {"recent:": "Recent", "starred:": "Starred", "trash:": "Trash", "other:": "Other Locations"}
+SPECIAL = {"recent:": "Recent", "starred:": "Starred", "trash:": "Trash", "other:": "Other Locations",
+           "network:": "Network"}
 
 # Windows' known folders (KNOWNFOLDERID) and Files' names and icons for them.
 KNOWN = [("Desktop", "desktop", "B4BFCC3A-DB2C-424C-B029-7FE99A87C641"),
@@ -256,6 +257,28 @@ SHARE_ERRORS = {5: "Access is denied.", 53: "The server can\u2019t be found.", 6
                 1326: "The user name or password is wrong.", 1909: "That account is locked."}
 
 
+def is_computer(loc: str) -> bool:
+    """"\\\\NAS" (a computer on the network, whose shares PR7-E lists) as opposed to "\\\\NAS\\music" (a share)."""
+    return loc.startswith("\\\\") and len([x for x in loc.split("\\") if x]) == 1
+
+
+def network_computers() -> list[tuple[str, str]]:
+    """(name, "\\\\NAME") for the computers Windows sees on the network (Explorer's Network page)."""
+    from . import winshell
+    seen, out = set(), []
+    for name, parsing in winshell.network_items():
+        if is_computer(parsing) and parsing.lower() not in seen:
+            seen.add(parsing.lower())
+            out.append((name or parsing[2:], parsing))
+    return sorted(out, key=lambda x: x[0].lower())
+
+
+def computer_shares(computer: str) -> list[tuple[str, str]]:
+    """(name, remark) of the shared folders on "\\\\NAME"; OSError when Windows can't ask (5: log in first)."""
+    from . import winshell
+    return winshell.computer_shares(computer)
+
+
 def connect_share(unc: str, user: str = "", password: str = "", remember: bool = False) -> None:
     """Log in to a share as Windows' "Map network drive" does, without a drive letter (WNetAddConnection2W).
     `remember` lets Windows keep the password in Credential Manager. Raises OSError with Windows' reason."""
@@ -352,6 +375,22 @@ def set_starred(paths: list[str], on: bool) -> None:
     if on:
         cur.extend(paths)
     settings.set("starred", cur)
+
+
+def star_meta() -> dict:
+    """Starred server items' details (folder?, size, date), so Starred can show them while not connected."""
+    from . import settings
+    try:
+        import json
+        v = json.loads(settings.get("star_meta", "{}"))
+        return v if isinstance(v, dict) else {}
+    except ValueError:
+        return {}
+
+
+def set_star_meta(meta: dict) -> None:
+    from . import settings
+    settings.set("star_meta", meta)
 
 
 def follow_star(old: str, new: str) -> None:

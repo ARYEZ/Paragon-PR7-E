@@ -94,13 +94,15 @@ class Tab(QWidget):
         if self.search is not None and self.search.get("text"):
             return "search", f"Search for “{self.search['text']}”"
         if self.location in places.SPECIAL:
-            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network"}[self.location]
+            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network", "network:": "network"}[self.location]
             return icon, places.SPECIAL[self.location]
         if servers.is_remote(self.location):
             srv = servers.server_for(self.location)
             path = servers.split(self.location)[1]
             name = posixpath.basename(path.rstrip("/"))
             return ("server", name) if name else ("server", srv.label if srv else self.location)
+        if places.is_computer(self.location):
+            return "desktop", self.location.lstrip("\\")
         if self.location.startswith("\\\\") and \
                 os.path.normcase(places.share_root(self.location)) == os.path.normcase(self.location.rstrip("\\")):
             return "share", places.share_label(self.location)
@@ -236,6 +238,9 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
         WINDOWS.append(self)
+        # The mouse's side buttons (back / forward) arrive as clicks on whatever is under the pointer, which the
+        # views would swallow: watch the whole application and act when the click is inside this window.
+        QApplication.instance().installEventFilter(self)
 
     # ================================================================== tabs
     @property
@@ -298,7 +303,12 @@ class MainWindow(QMainWindow):
             if servers.server_for(location) is None:
                 self.connect_server(location, tab=tab)
                 return
-        elif location not in places.SPECIAL:
+        elif location in places.SPECIAL or places.is_computer(location):
+            pass  # Network, or a computer on it: listed when loaded
+        elif places.share_path(location) and not os.path.isdir(location):
+            self.open_share(places.share_path(location), tab)  # log in first
+            return
+        else:
             location = os.path.abspath(location)
             if not os.path.isdir(location):
                 self._message("Unable to access location", f"“{location}” can’t be found.", [])
@@ -335,6 +345,12 @@ class MainWindow(QMainWindow):
         loc = self.tab.location
         if loc in places.SPECIAL:
             return
+        if places.is_computer(loc):
+            self.go("network:")
+            return
+        if loc.startswith("\\\\") and key(places.share_root(loc)) == key(loc.rstrip("\\")):
+            self.go("\\\\" + loc.lstrip("\\").split("\\")[0])  # a share's computer
+            return
         parent = parent_of(loc) if servers.is_remote(loc) else os.path.dirname(os.path.normpath(loc))
         if parent and key(parent) != key(loc):
             self.go(parent)
@@ -355,6 +371,9 @@ class MainWindow(QMainWindow):
         if servers.is_remote(loc):
             self._load_remote(tab, keep, scroll)
             return
+        if loc == "network:" or places.is_computer(loc):
+            self._load_network(tab)
+            return
         mode, entries = "folder", []
         try:
             if loc == "recent:":
@@ -368,7 +387,17 @@ class MainWindow(QMainWindow):
                     entries.append(e)
             elif loc == "starred:":
                 mode = "starred"
+                meta = places.star_meta()
                 for path in places.starred():
+                    if servers.is_remote(path):  # a server item: shown from what was saved with its star
+                        m = meta.get(path, {})
+                        k, rpath = servers.split(path)
+                        e = fs.Entry(posixpath.basename(rpath.rstrip("/")) or path, path, bool(m.get("is_dir")),
+                                     int(m.get("size", 0)), float(m.get("mtime", 0)))
+                        e.location = k.split("://", 1)[1].split("@")[-1] + (posixpath.dirname(rpath.rstrip("/"))
+                                                                            if rpath.count("/") > 1 else "")
+                        entries.append(e)
+                        continue
                     try:
                         e = fs.entry_for(path)
                     except OSError:
@@ -390,6 +419,8 @@ class MainWindow(QMainWindow):
                     extra = f"{fs.human_size(d.free)} free of {fs.human_size(d.total)}" if d.total else ""
                     entries.append(fs.Entry(d.label, d.root, True, 0, 0, kind="usb" if d.removable else "drive",
                                             extra=extra))
+                entries.append(fs.Entry("Network", "network:", True, kind="network",
+                                        extra="Computers and shared folders on this network"))
             else:
                 entries = self._with_children(self._sorted(fs.list_dir(loc, self.show_hidden)), tab)
         except OSError as e:
@@ -414,6 +445,45 @@ class MainWindow(QMainWindow):
             self._chrome()
         self._tabbar()
 
+    def _load_network(self, tab: Tab, retried: bool = False) -> None:
+        """Files' Networks: the computers Windows sees (Explorer's Network page), or one computer's shared folders.
+        Both are asked on a worker thread: Windows can take a few seconds to look."""
+        loc = tab.location
+        tab.model.set_rows([], "network")
+        tab.loading = True
+        self._chrome()
+        self._tabbar()
+
+        def find():
+            if loc == "network:":
+                return [fs.Entry(name, path, True, kind="computer") for name, path in places.network_computers()]
+            return [fs.Entry(name, loc + "\\" + name, True, kind="share", extra=remark)
+                    for name, remark in places.computer_shares(loc)]
+
+        def done(entries, error):
+            if tab.location != loc or tab not in self.tabs:
+                return
+            tab.loading = False
+            if error is not None and places.is_computer(loc) and getattr(error, "errno", 0) in (5, 1326) and \
+                    not retried:
+                # The computer wants a login before it shows its shares: as Windows does, through IPC$.
+                got = self._ask("login", {"host": loc.lstrip("\\"), "user": "", "protocol": "smb"})
+                if got:
+                    def login_then_list():
+                        places.connect_share(loc + "\\IPC$", got["user"], got["password"],
+                                             got.get("remember", False))
+                    self._background(login_then_list, lambda _r, err: self._load_network(tab, retried=True)
+                                     if err is None else (setattr(tab, "error", str(err.strerror if isinstance(
+                                         err, OSError) else err)), self._chrome()))
+                    return
+            if error is not None:
+                tab.error = (error.strerror if isinstance(error, OSError) and error.strerror else str(error))
+            tab.model.set_rows(entries or [], "network")
+            if tab is self.tab:
+                self._chrome()
+            self._tabbar()
+        self._background(find, done)
+
     def _load_remote(self, tab: Tab, keep, scroll) -> None:
         """A server folder: listed on a worker thread (servers can be slow); "Loading…" meanwhile."""
         loc = tab.location
@@ -436,7 +506,11 @@ class MainWindow(QMainWindow):
                 tab.model.set_rows([], "remote")
             else:
                 shown = [e for e in entries if self.show_hidden or not e.hidden]
+                tab.model.stars = {os.path.normcase(p) for p in places.starred()}
                 tab.model.set_rows(self._sorted(shown), "remote")
+                for e in shown:
+                    if e.is_dir:
+                        self._count(e.path)
                 select = getattr(tab, "pending_select", None) or keep
                 tab.pending_select = None
                 if select:
@@ -607,7 +681,7 @@ class MainWindow(QMainWindow):
             side = places.share_root(side)
         self.sidebar.select_path(side if t.search is None else "")
         for view in (t.grid, t.list):
-            view.can_drop = t.location not in places.SPECIAL and t.search is None
+            view.can_drop = t.location not in places.SPECIAL and t.search is None and not places.is_computer(t.location)
         self.connectbar.setVisible(t.location == "other:" and t.search is None)
         self._empty_state()
         self._selection(t)
@@ -624,7 +698,7 @@ class MainWindow(QMainWindow):
     def _segments(self, loc: str) -> list[tuple[str, str, str]]:
         """The path bar's buttons: from Home (or the drive) down to the folder."""
         if loc in places.SPECIAL:
-            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network"}[loc]
+            icon = {"recent:": "recent", "starred:": "star", "trash:": "trash", "other:": "network", "network:": "network"}[loc]
             return [(icon, places.SPECIAL[loc], loc)]
         if servers.is_remote(loc):
             k, path = servers.split(loc)
@@ -636,9 +710,12 @@ class MainWindow(QMainWindow):
                 segs.append(("", part, servers.join(k, cur)))
             return segs
         home = places.home()
+        if places.is_computer(loc):
+            return [("network", "Network", "network:"), ("desktop", loc.lstrip("\\"), loc)]
         if loc.startswith("\\\\"):
             base = places.share_root(loc)
-            segs = [("share", places.share_label(base), base)]
+            computer, share = base.lstrip("\\").split("\\")[:2]
+            segs = [("desktop", computer, "\\\\" + computer), ("share", share, base)]
         elif fs.is_inside(loc, home):
             segs = [("home", "Home", home)]
             base = home
@@ -674,6 +751,11 @@ class MainWindow(QMainWindow):
             self.empty.show_state("star", "No Starred Files", "Star an item with its right-click menu.")
         elif t.location == "recent:":
             self.empty.show_state("recent", "No Recent Files")
+        elif t.location == "network:":
+            self.empty.show_state("network", "No Computers Found", "Windows hasn\u2019t found any computers on this "
+                                  "network. Type a share\u2019s address (\\\\pc\\share) in Connect to Server.")
+        elif places.is_computer(t.location):
+            self.empty.show_state("desktop", "No Shared Folders", "This computer doesn\u2019t share any folders.")
         else:
             self.empty.show_state("folder", "Folder is Empty")
 
@@ -712,6 +794,13 @@ class MainWindow(QMainWindow):
         self.go(text)
 
     def eventFilter(self, obj, e):
+        if e.type() == e.Type.MouseButtonPress and e.button() in (Qt.BackButton, Qt.ForwardButton) and \
+                isinstance(obj, QWidget) and obj.window() is self:
+            self.back() if e.button() == Qt.BackButton else self.forward()
+            return True
+        if e.type() == e.Type.MouseButtonRelease and e.button() in (Qt.BackButton, Qt.ForwardButton) and \
+                isinstance(obj, QWidget) and obj.window() is self:
+            return True  # the release too, so nothing else acts on it
         if e.type() == e.Type.KeyPress and e.key() == Qt.Key_Escape:
             if obj is self.headerbar.location:
                 self.headerbar.show_mode("path")
@@ -894,7 +983,8 @@ class MainWindow(QMainWindow):
 
     # ================================================================== watching folders
     def _watch(self):
-        want = {t.location for t in self.tabs if t.location not in places.SPECIAL and not servers.is_remote(t.location)}
+        want = {t.location for t in self.tabs if t.location not in places.SPECIAL and not servers.is_remote(t.location)
+                and not places.is_computer(t.location)}
         for t in self.tabs:  # open folders in the list view are watched too
             if t.model.expandable:
                 want |= {e.path for e in t.model.rows if e.is_dir and os.path.normcase(e.path) in t.expanded}
@@ -1281,6 +1371,17 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, show)
 
     def star(self, paths: list[str], on: bool) -> None:
+        remote = [p for p in paths if servers.is_remote(p)]
+        if remote:  # keep what a server item looks like, for Starred while not connected
+            meta = places.star_meta()
+            rows = {e.path: e for e in self.tab.model.rows}
+            for p in remote:
+                if on and p in rows:
+                    e = rows[p]
+                    meta[p] = {"is_dir": e.is_dir, "size": max(0, e.size), "mtime": e.mtime}
+                elif not on:
+                    meta.pop(p, None)
+            places.set_star_meta(meta)
         places.set_starred(paths, on)
         stars = {os.path.normcase(p) for p in places.starred()}
         for t in self.tabs:
@@ -1398,9 +1499,9 @@ class MainWindow(QMainWindow):
 
     def _allowed(self, what: str, path: str) -> bool:
         """Files' "Always / On this computer only / Never" preferences (thumbnails, item counts)."""
-        if servers.is_remote(path):
-            return False  # server folders: no thumbnails or counts (Windows can't read them there)
         v = self.prefs[what]
+        if servers.is_remote(path):
+            return v == "always"  # each picture would be downloaded: only when asked for "Always"
         return v == "always" or (v == "local" and not places.is_remote(path))
 
     def _count(self, path: str) -> None:
@@ -1667,7 +1768,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             m.addAction(self.act["properties"])
             return self._popup(m, gpos)
-        if t.location == "other:":
+        if t.location in ("other:", "network:") or places.is_computer(t.location):
             m.addAction("Open", lambda: self.go(entries[0].path))
             m.addAction("Open in New Tab", lambda: self.new_tab(entries[0].path))
             if entries[0].kind == "usb":
@@ -1691,6 +1792,9 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             r = m.addAction("Rename\u2026", self.rename)
             r.setEnabled(len(entries) == 1)
+            m.addSeparator()
+            on = all(t.model.starred(e) for e in entries)
+            m.addAction("Unstar" if on else "Star", lambda: self.star([e.path for e in entries], not on))
             m.addAction(self.act["properties"])
             return self._popup(m, gpos)
         if folders and not files:
@@ -1922,6 +2026,7 @@ class MainWindow(QMainWindow):
         self.status.place()
 
     def closeEvent(self, e):
+        QApplication.instance().removeEventFilter(self)
         if self.runner.running:
             if not self._ask("confirm", {"title": "Operations running", "heading": "Close PR7-E while files are "
                                          "still being copied or moved?", "text": "Running operations will be "

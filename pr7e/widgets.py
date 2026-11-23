@@ -287,7 +287,7 @@ def file_pixmap(kind: str, size: int = 18) -> QPixmap:
         fill = QColor(theme.LED_ORANGE)
         fill.setAlphaF(0.12)
         draw_icon(p, "folder", r, QColor(theme.LED_ORANGE), w * 1.05, fill)
-    elif kind in ("drive", "usb", "network", "trash", "server", "share"):
+    elif kind in ("drive", "usb", "network", "trash", "server", "share", "desktop"):
         draw_icon(p, kind, r, QColor(theme.ACCENT), w)
     elif kind in FILE_KINDS and kind not in ("text", "document") and size >= 32:
         fill = QColor(theme.TEXT_DIM)
