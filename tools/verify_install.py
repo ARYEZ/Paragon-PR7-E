@@ -2,7 +2,8 @@
 
 `installed` runs the installed PR7-E.exe offscreen on a folder (--selftest) and checks what it listed, so the
 frozen program is shown to start with Qt, its plugins and the Inter fonts; it also checks "Open in PR7-E" in
-Explorer's folder menu (the installer's ticked-by-default option)."""
+Explorer's folder menu and, as CI installs with /MERGETASKS=defaultfolders, "Use PR7-E for Folders": folders' and
+drives' default action and Win+E. `uninstalled` checks all of it is gone."""
 import json
 import os
 import subprocess
@@ -18,6 +19,8 @@ SHORTCUT = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" 
 UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{6B8E2F14-3C5A-4D97-A1E0-7F29C4B85D36}_is1"
 MENU = [r"Software\Classes\Directory\shell\PR7E", r"Software\Classes\Drive\shell\PR7E",
         r"Software\Classes\Directory\Background\shell\PR7E"]
+DEFAULTS = [r"Software\Classes\Directory\shell", r"Software\Classes\Drive\shell"]
+WIN_E = r"Software\Classes\CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}"
 
 
 def value(path, name=""):
@@ -51,6 +54,11 @@ def installed():
         check(value(key) == "Open in PR7-E", f"Explorer menu {key}", p)
         cmd = value(key + r"\command") or ""
         check(str(exe).lower() in cmd.lower() and "--explorer" in cmd, f"  its command: {cmd}", p)
+    for key in DEFAULTS:
+        check(value(key) == "PR7E", f"Use PR7-E for Folders: {key} default", p)
+    cmd = value(WIN_E + r"\shell\opennewwindow\command") or ""
+    check(str(exe).lower() in cmd.lower() and value(WIN_E + r"\shell\opennewwindow\command", "DelegateExecute") == "",
+          f"Use PR7-E for Folders: Win+E runs {cmd}", p)
     with tempfile.TemporaryDirectory() as d:
         folder = Path(d) / "folder"
         (folder / "Pictures").mkdir(parents=True)
@@ -72,6 +80,9 @@ def uninstalled():
         check(value(UNINSTALL, "DisplayName") is None, "Installed apps entry removed", p)
         for key in MENU:
             check(value(key) is None, f"Explorer menu {key} removed", p)
+        for key in DEFAULTS:
+            check(value(key) is None, f"{key} default back to Explorer's", p)
+        check(value(WIN_E + r"\shell\opennewwindow\command") is None, "Win+E back to Explorer", p)
         if not p or time.time() > deadline:
             return p
         print("... waiting for the uninstaller to finish")

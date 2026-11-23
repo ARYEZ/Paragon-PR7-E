@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
         run: |
           $p = Start-Process "dist/PR7-E-Setup-$env:PR7E_VERSION.exe" -Wait -PassThru `
-               -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=install.log"
+               -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=install.log", "/MERGETASKS=defaultfolders"
           if ($p.ExitCode -ne 0) { Get-Content install.log; throw "install failed: $($p.ExitCode)" }
           python tools/verify_install.py installed
           if ($LASTEXITCODE -ne 0) { Get-Content install.log; throw "install check failed" }

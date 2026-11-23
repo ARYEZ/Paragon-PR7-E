@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PR7-E")
         self.resize(1280, 800)
         self.answers: dict = {}                 # tests: kind -> function(payload) instead of a dialog
+        self.shell_reg = None                   # tests: a stand-in registry for "Use PR7-E for Folders"
         self.asker = Asker(self._ask)
         self.runner = JobRunner(self.asker)
         self.runner.finished.connect(self._job_done)
@@ -993,6 +994,29 @@ class MainWindow(QMainWindow):
         for a_key, a in self.finish_actions.items():
             a.setChecked(a_key == theme.FINISH)
 
+    def set_default_folders(self, on: bool) -> None:
+        """Use PR7-E for Folders: double-clicked folders and drives, and Win+E, open PR7-E (per user, undone by
+        unticking or by uninstalling)."""
+        from . import shell
+        if self.shell_reg is None and not shell.available():
+            self.act["folders"].setChecked(False)
+            return
+        if on and not self._ask("confirm", {
+                "title": "Use PR7-E for Folders",
+                "heading": "Open folders in PR7-E instead of File Explorer?",
+                "text": "Double-clicking a folder or drive (on the desktop, in shortcuts and in other programs) and "
+                        "Win+E will open PR7-E. The taskbar, Start and Windows' special places (This PC, Control "
+                        "Panel, the Recycle Bin's own window) stay with File Explorer. Untick this, or uninstall "
+                        "PR7-E, to go back.",
+                "button": "Use PR7-E"}):
+            self.act["folders"].setChecked(shell.folders_on(self.shell_reg))
+            return
+        try:
+            shell.set_folders(on, self.shell_reg)
+        except OSError as e:
+            self._message("Use PR7-E for Folders", "The setting couldn\u2019t be changed.", [e.strerror or str(e)])
+        self.act["folders"].setChecked(shell.folders_on(self.shell_reg))
+
     def toggle_sidebar(self):
         self.sidebar.setVisible(not self.sidebar.isVisible())
         settings.set("sidebar", self.sidebar.isVisible())
@@ -1046,6 +1070,8 @@ class MainWindow(QMainWindow):
         a("undo", "Undo", self.undo, ["Ctrl+Z"])
         a("redo", "Redo", self.redo, ["Ctrl+Shift+Z", "Ctrl+Y"])
         a("shortcuts", "Keyboard Shortcuts", self._shortcuts, ["Ctrl+?", "Ctrl+F1"])
+        a("folders", "Use PR7-E for Folders", lambda: self.set_default_folders(self.act["folders"].isChecked()),
+          checkable=True)
         a("open", "Open", self.open_selected, ["Return", "Enter"], scope="files")
         a("open_tab", "Open in New Tab", lambda: self.open_selected(new_tab=True), ["Ctrl+Return"], scope="files")
         a("copy", "Copy", self.copy, ["Ctrl+C"], scope="files")
@@ -1122,6 +1148,11 @@ class MainWindow(QMainWindow):
         finish = m.addMenu("Finish")
         for act in self.finish_actions.values():
             finish.addAction(act)
+        m.addSeparator()
+        from . import shell
+        self.act["folders"].setChecked(shell.folders_on(self.shell_reg))  # what the registry says now
+        self.act["folders"].setEnabled(self.shell_reg is not None or shell.available())
+        m.addAction(self.act["folders"])
         m.addSeparator()
         m.addAction(self.act["shortcuts"])
         m.addAction("About PR7-E", self._about)

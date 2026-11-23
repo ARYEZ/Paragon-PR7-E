@@ -22,8 +22,13 @@ Linux for tests. The owner writes Python; explain the why of changes.
 - `pr7e/places.py` (no Qt): sidebar places; Windows known folders (SHGetKnownFolderPath); drives; bookmarks and
   stars in settings; Recent from `%APPDATA%\Microsoft\Windows\Recent\*.lnk` (`lnk_target` parses LinkInfo).
 - `pr7e/system.py`: open (os.startfile + SHAddToRecentDocs), Windows' Open with chooser, default app / type names
-  (AssocQueryStringW), terminal. `pr7e/shell.py`: "Open in PR7-E" registry verbs (HKCU, Directory / Drive /
-  Background); the installer calls `--register-menu` / `--unregister`.
+  (AssocQueryStringW), terminal. `pr7e/shell.py` (HKCU only, through `Registry(prefix)` so tests use a stand-in or,
+  on Windows CI, a throwaway key): "Open in PR7-E" verbs (Directory / Drive / Background) and "Use PR7-E for
+  Folders" (Directory\shell and Drive\shell default = PR7E, Win+E via the CLSID {52205fd8...} opennewwindow
+  override; never the shell's Folder class). Wanted state in `HKCU\Software\Paragon\PR7-E\Shell` (Menu, Folders)
+  so each switch keeps the other; a previous default is saved and put back. CLI / installer: `--register-menu`,
+  `--unregister-menu`, `--default-folders on|off`, `--unregister` (everything). `app.folders_from` turns Explorer's
+  `C:"` (from "C:\\") into the drive root.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list
@@ -34,7 +39,7 @@ Linux for tests. The owner writes Python; explain the why of changes.
 - `app.py`: `--selftest FOLDER OUT.json` opens a window offscreen and writes what it lists (CI runs it on the
   installed exe). Installer `installer/pr7e.iss` (Inno Setup 6, per user, AppId
   {6B8E2F14-3C5A-4D97-A1E0-7F29C4B85D36} permanent); CI installs it silently, runs `tools/verify_install.py
-  installed`, uninstalls, `... uninstalled`. The spec gives the .exe file details and no UPX; CI builds PyInstaller's
+  installed` (CI installs with /MERGETASKS=defaultfolders), uninstalls, `... uninstalled`. The spec gives the .exe file details and no UPX; CI builds PyInstaller's
   bootloader from source and scans with Defender (PR7-F's false-positive fix).
 
 ## The look (family rules)

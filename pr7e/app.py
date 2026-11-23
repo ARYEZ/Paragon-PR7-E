@@ -2,8 +2,10 @@
 
     PR7-E.exe [folder ...]               a window, a tab per folder (Home if none)
     PR7-E.exe --explorer FOLDER          from Explorer's "Open in PR7-E"
-    PR7-E.exe --register-menu            add "Open in PR7-E" to Explorer's folder menu (the installer does this)
-    PR7-E.exe --unregister               take it away again (the uninstaller)
+    PR7-E.exe --register-menu            add "Open in PR7-E" to Explorer's folder menu (an installer option)
+    PR7-E.exe --unregister-menu          take that item away
+    PR7-E.exe --default-folders on|off   Use PR7-E for Folders: double-clicked folders and Win+E open PR7-E
+    PR7-E.exe --unregister               take everything away again (the uninstaller)
     PR7-E.exe --version
     PR7-E.exe --selftest FOLDER OUT.json  open a window offscreen on FOLDER, write what it lists (CI checks the
                                          installed program with it; settings go to a temp folder)
@@ -13,6 +15,25 @@ from __future__ import annotations
 
 import os
 import sys
+
+
+def folders_from(argv: list[str]) -> list[str]:
+    """The folders on the command line. Explorer passes a drive as "C:\\" in quotes, and Windows' command-line rules
+    read that backslash as escaping the quote: the program gets C:" . Stripped, "C:" would mean the current folder
+    on drive C, so a bare drive letter is taken as the drive's root."""
+    import re
+    out = []
+    for a in argv:
+        if a.startswith("--"):
+            continue
+        a = a.strip().strip('"').strip()
+        if re.fullmatch(r"[A-Za-z]:\\?", a):
+            a = a[0].upper() + ":" + os.sep
+        if os.path.isdir(a):
+            out.append(os.path.abspath(a))
+        elif os.path.isfile(a):
+            out.append(os.path.dirname(os.path.abspath(a)))
+    return out
 
 
 def selftest(folder: str, out: str) -> int:
@@ -52,9 +73,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if argv[:1] == ["--selftest"] and len(argv) == 3:
         return selftest(argv[1], argv[2])
-    if argv[:1] in (["--register-menu"], ["--register"], ["--unregister"]):
+    if argv[:1] and argv[0] in ("--register-menu", "--register", "--unregister-menu", "--unregister",
+                                "--default-folders"):
         from . import shell
-        return shell.run(argv[0])
+        return shell.run(argv)
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
@@ -70,16 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     if os.path.exists(icon):
         app.setWindowIcon(QIcon(icon))
     from .main_window import MainWindow
-    folders = []
-    for a in argv:
-        if a == "--explorer":
-            continue
-        a = a.strip('"')
-        if os.path.isdir(a):
-            folders.append(os.path.abspath(a))
-        elif os.path.isfile(a):
-            folders.append(os.path.dirname(os.path.abspath(a)))
-    w = MainWindow(folders or None)
+    w = MainWindow(folders_from(argv) or None)
     w.show()
     return app.exec()
 

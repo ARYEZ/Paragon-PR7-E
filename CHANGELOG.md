@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1
+
+- **Use PR7-E for Folders** (main menu, and an installer option, off by default): double-clicking a folder or drive
+  (on the desktop, in shortcuts, in other programs) and Win+E open PR7-E instead of File Explorer. Per user; another
+  file manager's setting is kept and put back; unticking it or uninstalling PR7-E returns folders to File Explorer.
+  The taskbar, Start and Windows' special places (This PC, Control Panel, the Recycle Bin's window) stay with
+  Explorer.
+- Fixed: "Open in PR7-E" on a drive opened the drive's current folder instead of its root (Explorer's "C:\\"
+  arrives as C:" on the command line).
+- The right-click item and the folders switch are separate: turning one off keeps the other.
+
 ## 0.1.0
 
 First release: GNOME Files' window and behaviour in the Paragon look.
