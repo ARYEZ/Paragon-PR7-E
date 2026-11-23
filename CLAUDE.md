@@ -37,6 +37,9 @@ Linux for tests. The owner writes Python; explain the why of changes.
 - `pr7e/winshell.py` (Windows, ctypes COM): `thumbnail` (IShellItemImageFactory, THUMBNAILONLY), `show_menu`
   (IContextMenu from SHBindToParent + GetUIObjectOf; a hidden host window forwards INITMENUPOPUP etc. to
   IContextMenu2/3 so Send to fills; TrackPopupMenuEx at GetCursorPos), `menu_items` (tests). COM is STA per thread.
+- `pr7e/rename.py` (no Qt): Files' batch rename (`from_template`, `find_replace`, `check` marks problems,
+  `BatchRenameJob` renames through temporary names so swaps work). Preferences live in settings as `pref_*`
+  (`main_window.PREFS` / `load_prefs`); "local" means not `places.is_remote` (UNC or DRIVE_REMOTE).
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

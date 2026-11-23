@@ -211,7 +211,7 @@ class Search(QObject):
         self.generation = 0
         self._stop = threading.Event()
 
-    def start(self, root, text, when, what, show_hidden, sync=False) -> int:
+    def start(self, root, text, when, what, show_hidden, sync=False, recursive=True) -> int:
         self.stop()
         self.generation += 1
         gen, stop = self.generation, threading.Event()
@@ -221,7 +221,7 @@ class Search(QObject):
             batch = []
             import time
             last = time.monotonic()
-            for e in fs.search(root, text, when, what, show_hidden, stop.is_set):
+            for e in fs.search(root, text, when, what, show_hidden, stop.is_set, recursive=recursive):
                 batch.append(e)
                 if time.monotonic() - last > 0.15 or len(batch) >= 300:
                     self.found.emit(gen, batch)

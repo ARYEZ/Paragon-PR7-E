@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- **Rename several files at once** (Rename… / F2 with more than one selected): Files' "Rename N Files" with a
+  template ([Original file name], [1, 2, 3], [01, 02, 03], [001, 002, 003]; numbered by name or date) or find and
+  replace; extensions kept; a preview marks names that can't be used (the same as another, taken, not allowed on
+  Windows) and Rename waits until all are fine. Swaps work; one Undo puts every name back.
+- **Preferences** (Ctrl+,): sort folders before files; open items with a single or double click; show Delete
+  Permanently in the menu; search in subfolders; show thumbnails and count items in folders always, on this
+  computer only (not network drives) or never.
+
 ## 0.2.0
 
 - **Compress…**: Files' dialog (name; .zip, Encrypted .zip, .tar.xz, .7z). .zip and .tar.xz are made by Python;

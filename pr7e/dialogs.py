@@ -10,7 +10,7 @@ import threading
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QVBoxLayout)
+                               QPushButton, QVBoxLayout, QWidget)
 
 from . import __version__, fs, places, system, theme
 from .widgets import Header, file_pixmap
@@ -464,3 +464,171 @@ class PasswordDialog(QDialog):
 
     def answer(self):
         return self.edit.text()
+
+
+class BatchRenameDialog(QDialog):
+    """Files' "Rename N Files": a template (with tags added from the menu) or find and replace, the numbering
+    order, and the preview: each name and what it becomes, problems in red. Rename is off until every new name can
+    be used."""
+
+    def __init__(self, paths: list[str], parent=None):
+        super().__init__(parent)
+        from PySide6.QtGui import QColor
+        from PySide6.QtWidgets import QComboBox, QMenu, QRadioButton, QTreeWidget
+        from . import rename
+        self.rename = rename
+        self.paths = paths
+        self.QColor = QColor
+        self.setWindowTitle(f"Rename {len(paths)} Files")
+        self.resize(820, 620)
+        body = _shell(self, f"RENAME {len(paths)} FILES")
+        modes = QHBoxLayout()
+        self.use_template = QRadioButton("Rename using a template")
+        self.use_replace = QRadioButton("Find and replace text")
+        self.use_template.setChecked(True)
+        modes.addWidget(self.use_template)
+        modes.addWidget(self.use_replace)
+        modes.addStretch(1)
+        body.addLayout(modes)
+        self.template_row = QWidget()
+        tr = QHBoxLayout(self.template_row)
+        tr.setContentsMargins(0, 0, 0, 0)
+        self.template = QLineEdit(f"{rename.TAG_NAME}")
+        add = QPushButton("+ Add")
+        m = QMenu(add)
+        for tag in rename.TAGS:
+            m.addAction(tag, lambda t=tag: self.template.insert(t))
+        add.setMenu(m)
+        self.order = QComboBox()
+        for key, text in rename.ORDERS.items():
+            self.order.addItem(text, key)
+        tr.addWidget(self.template, 1)
+        tr.addWidget(add)
+        tr.addWidget(self.order)
+        body.addWidget(self.template_row)
+        self.replace_row = QWidget()
+        rr = QGridLayout(self.replace_row)
+        rr.setContentsMargins(0, 0, 0, 0)
+        self.find = QLineEdit()
+        self.replace_with = QLineEdit()
+        rr.addWidget(_field("Existing text"), 0, 0)
+        rr.addWidget(self.find, 0, 1)
+        rr.addWidget(_field("Replace with"), 1, 0)
+        rr.addWidget(self.replace_with, 1, 1)
+        body.addWidget(self.replace_row)
+        self.preview = QTreeWidget()
+        self.preview.setColumnCount(2)
+        self.preview.setHeaderLabels(["ORIGINAL NAME", "NEW NAME"])
+        self.preview.setRootIsDecorated(False)
+        self.preview.header().setStretchLastSection(True)
+        self.preview.setColumnWidth(0, 360)
+        body.addWidget(self.preview, 1)
+        self.problem = QLabel("")
+        self.problem.setProperty("role", "error")
+        body.addWidget(self.problem)
+        bb = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.ok = bb.addButton("Rename", QDialogButtonBox.AcceptRole)
+        self.ok.setDefault(True)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        body.addWidget(bb)
+        for sig in (self.template.textChanged, self.find.textChanged, self.replace_with.textChanged,
+                    self.order.currentIndexChanged, self.use_template.toggled):
+            sig.connect(self._update)
+        self.template.setFocus()
+        self.template.selectAll()
+        self._update()
+
+    def items(self):
+        order = self.order.currentData()
+        if self.use_template.isChecked():
+            return self.rename.from_template(self.paths, self.template.text(), order)
+        return self.rename.find_replace(self.paths, self.find.text(), self.replace_with.text(), order)
+
+    def _update(self, *_):
+        from PySide6.QtWidgets import QTreeWidgetItem
+        self.template_row.setVisible(self.use_template.isChecked())
+        self.replace_row.setVisible(self.use_replace.isChecked())
+        items = self.items()
+        self.preview.clear()
+        bad = 0
+        for it in items:
+            row = QTreeWidgetItem([it.name, it.new])
+            if it.problem:
+                bad += 1
+                row.setForeground(1, self.QColor(theme.METER_RED))
+                row.setToolTip(1, it.problem)
+            elif it.new != it.name:
+                row.setForeground(1, self.QColor(theme.LED_ORANGE))
+            self.preview.addTopLevelItem(row)
+        first = next((it.problem for it in items if it.problem), "")
+        self.problem.setText("" if not bad else (first if bad == 1 else f"{bad} names can’t be used: {first}"))
+        self.ok.setEnabled(self.rename.ready(items))
+        self._items = items
+
+    def accept(self):
+        if self.ok.isEnabled():
+            super().accept()
+
+    def answer(self):
+        return [(it.path, it.new) for it in self._items if it.new != it.name]
+
+
+class PreferencesDialog(QDialog):
+    """Files' Preferences: General (folders first, click to open, Delete Permanently in the menu) and Performance
+    (search in subfolders, thumbnails, item counts: always / on this computer only / never)."""
+
+    CHOICES = [("local", "On this computer only"), ("always", "Always"), ("never", "Never")]
+
+    def __init__(self, prefs: dict, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QComboBox, QGroupBox
+        self.setWindowTitle("Preferences")
+        self.resize(620, 0)
+        body = _shell(self, "PREFERENCES")
+        general = QGroupBox("GENERAL")
+        g = QGridLayout(general)
+        self.folders_first = QCheckBox("Sort folders before files")
+        self.folders_first.setChecked(prefs["folders_first"])
+        g.addWidget(self.folders_first, 0, 0, 1, 2)
+        g.addWidget(QLabel("Action to open items"), 1, 0)
+        self.click = QComboBox()
+        self.click.addItem("Double click", "double")
+        self.click.addItem("Single click", "single")
+        self.click.setCurrentIndex(self.click.findData(prefs["click"]))
+        g.addWidget(self.click, 1, 1)
+        self.show_delete = QCheckBox("Show action to permanently delete")
+        self.show_delete.setChecked(prefs["show_delete"])
+        g.addWidget(self.show_delete, 2, 0, 1, 2)
+        g.setColumnStretch(0, 1)
+        body.addWidget(general)
+        perf = QGroupBox("PERFORMANCE")
+        pg = QGridLayout(perf)
+        self.search_subfolders = QCheckBox("Search in subfolders")
+        self.search_subfolders.setChecked(prefs["search_subfolders"])
+        pg.addWidget(self.search_subfolders, 0, 0, 1, 2)
+        self.combos = {}
+        for r, (key, label) in enumerate((("thumbnails", "Show thumbnails"),
+                                          ("counts", "Count number of files in folders")), 1):
+            pg.addWidget(QLabel(label), r, 0)
+            c = QComboBox()
+            for v, text in self.CHOICES:
+                c.addItem(text, v)
+            c.setCurrentIndex(c.findData(prefs[key]))
+            pg.addWidget(c, r, 1)
+            self.combos[key] = c
+        hint = QLabel("“On this computer only” leaves out network drives, where reading every file is slow.")
+        hint.setProperty("role", "dim")
+        hint.setWordWrap(True)
+        pg.addWidget(hint, 3, 0, 1, 2)
+        pg.setColumnStretch(0, 1)
+        body.addWidget(perf)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        body.addWidget(bb)
+
+    def answer(self) -> dict:
+        return {"folders_first": self.folders_first.isChecked(), "click": self.click.currentData(),
+                "show_delete": self.show_delete.isChecked(), "search_subfolders": self.search_subfolders.isChecked(),
+                "thumbnails": self.combos["thumbnails"].currentData(), "counts": self.combos["counts"].currentData()}

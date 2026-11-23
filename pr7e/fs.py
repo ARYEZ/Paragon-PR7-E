@@ -117,8 +117,8 @@ SORTS = {"name": "A-Z", "name_desc": "Z-A", "mtime_desc": "Last modified", "mtim
          "size_desc": "Size", "type": "Type"}
 
 
-def sort_entries(entries: list[Entry], key: str = "name") -> list[Entry]:
-    """Files' sort menu. Folders stay before files in every order."""
+def sort_entries(entries: list[Entry], key: str = "name", folders_first: bool = True) -> list[Entry]:
+    """Files' sort menu. Folders stay before files in every order (unless the preference is off)."""
     by_name = sorted(entries, key=lambda e: natural_key(e.name))
     if key == "name_desc":
         by_name.reverse()
@@ -132,6 +132,8 @@ def sort_entries(entries: list[Entry], key: str = "name") -> list[Entry]:
         by_name.sort(key=lambda e: e.size)
     elif key == "type":
         by_name.sort(key=lambda e: (e.kind, e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""))
+    if not folders_first:
+        return by_name
     return [e for e in by_name if e.is_dir] + [e for e in by_name if not e.is_dir]
 
 
@@ -142,7 +144,7 @@ def matches(name: str, words: list[str]) -> bool:
 
 
 def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bool = False,
-           cancelled=lambda: False, now: float | None = None):
+           cancelled=lambda: False, now: float | None = None, recursive: bool = True):
     """Files' search: everything under `root` whose name holds every word typed (any case, accents ignored),
     narrowed by When (modified in the last N days) and What (a kind). Yields entries as they're found, with
     LOCATION relative to `root`. Folders that can't be read are passed over."""
@@ -170,7 +172,7 @@ def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bo
         rel = os.path.relpath(folder, root)
         rel = "" if rel == "." else rel.replace("\\", "/")
         for e in sort_entries(entries):
-            if e.is_dir and not os.path.islink(e.path):
+            if recursive and e.is_dir and not os.path.islink(e.path):
                 stack.append(e.path)
             if not matches(e.name, words):
                 continue

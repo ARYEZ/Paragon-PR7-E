@@ -451,3 +451,64 @@ def test_show_more_options_needs_one_folder(win, home):
     w._item_menu(w.tab.selected())
     more = next(a for a in menus[-1].actions() if a.text() == "Show More Options")
     assert more.isEnabled() == winshell.available
+
+
+def test_rename_several(win, home):
+    w = win
+    d = home / "Music" / "Paragon" / "ELSEWORLD"
+    w.go(str(d))
+    w.select_all()
+    asked = []
+
+    def answer(paths):
+        asked.append(paths)
+        from pr7e.dialogs import BatchRenameDialog
+        dlg = BatchRenameDialog(paths, w)
+        dlg.use_replace.setChecked(True)
+        dlg.find.setText("0")
+        dlg.replace_with.setText("Track ")
+        assert dlg.ok.isEnabled() and dlg.preview.topLevelItemCount() == 3
+        return dlg.answer()
+    w.answers["batch_rename"] = answer
+    w.rename()
+    assert len(asked[0]) == 3
+    assert sorted(os.listdir(d)) == ["Track 1 Portal.flac", "Track 2 Ruins of Elsewhere.flac",
+                                     "Track 3 Static Bloom.mp3"]
+    assert sorted(e.name for e in w.tab.selected()) == sorted(os.listdir(d))
+    w.undo()
+    assert sorted(os.listdir(d)) == ["01 Portal.flac", "02 Ruins of Elsewhere.flac", "03 Static Bloom.mp3"]
+
+
+def test_preferences(win, home):
+    from pr7e.dialogs import PreferencesDialog
+    from pr7e.main_window import PREFS, load_prefs
+    w = win
+    assert load_prefs() == PREFS
+    (home / "a.txt").write_text("a")
+    w.reload()
+    assert names(w) == ["Documents", "Music", "Pictures", "a.txt"]
+    d = PreferencesDialog(dict(w.prefs), w)
+    d.folders_first.setChecked(False)
+    d.show_delete.setChecked(True)
+    d.search_subfolders.setChecked(False)
+    d.click.setCurrentIndex(d.click.findData("single"))
+    d.combos["counts"].setCurrentIndex(d.combos["counts"].findData("never"))
+    w.answers["preferences"] = lambda p: d.answer()
+    w.preferences()
+    assert load_prefs()["click"] == "single" and w.prefs["counts"] == "never"
+    assert names(w) == ["a.txt", "Documents", "Music", "Pictures"]      # folders no longer first
+    assert all(e.size == -1 for e in w.tab.model.rows if e.is_dir)       # no counting
+    menus = []
+    w.answers["context"] = menus.append
+    w.tab.select_paths([str(home / "a.txt")])
+    w._item_menu(w.tab.selected())
+    assert "Delete Permanently…" in [a.text() for a in menus[-1].actions()]
+    w.start_search("notes")
+    w._run_search(sync=True)
+    QApplication.processEvents()
+    assert names(w) == []                                                 # not in subfolders
+    w.end_search()
+    # Single click opens.
+    idx = w.tab.model.index(w.tab.model.row_of(str(home / "Documents")), 0)
+    w.tab.view.clicked.emit(idx)
+    assert w.tab.location == str(home / "Documents")

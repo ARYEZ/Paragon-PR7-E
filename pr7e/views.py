@@ -49,6 +49,7 @@ class EntryModel(QAbstractTableModel):
         self.mode = "folder"
         self.stars: set[str] = set()
         self.by_path: dict[str, int] = {}
+        self.thumbs_ok = lambda e: True   # the window's "Show thumbnails" preference
 
     def set_rows(self, rows: list[fs.Entry], mode: str = "folder") -> None:
         self.beginResetModel()
@@ -127,7 +128,7 @@ class EntryModel(QAbstractTableModel):
             return e
         if role == THUMB:
             return self.loader.thumbnail(e) if self.loader is not None and e.kind in ("image", "video", "document") \
-                and e.trash is None else None
+                and e.trash is None and self.thumbs_ok(e) else None
         return None
 
     def flags(self, index):

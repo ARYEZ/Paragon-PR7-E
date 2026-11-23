@@ -15,7 +15,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMenu, QStackedWidget,
                                QVBoxLayout, QWidget)
 
-from . import archive, fs, ops, places, settings, system, theme, trash, winshell
+from . import archive, fs, ops, places, rename, settings, system, theme, trash, winshell
 from .views import (local_paths, EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
                     SearchFilters, Sidebar, TabStrip, TrashBar)
 from .widgets import Header
@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
         self.sort = settings.get("sort", "name")
         self.view_mode = settings.get("view", "grid")
         self.zoom = min(len(GridView.ZOOMS) - 1, max(0, settings.get_int("zoom", 2)))
+        self.prefs = load_prefs()
         self.watcher = QFileSystemWatcher(self)
         self.watcher.directoryChanged.connect(self._dir_changed)
         self.reload_timer = QTimer(self, singleShot=True, interval=250)
@@ -204,13 +205,15 @@ class MainWindow(QMainWindow):
         location = location or (self.tab.location if self.tab and self.tab.location else places.home())
         t = Tab(self, location)
         for view in (t.grid, t.list):
-            view.activated.connect(lambda _i, t=t: self.open_selected(t))
+            view.activated.connect(lambda _i, t=t: None if self.prefs["click"] == "single" else self.open_selected(t))
+            view.clicked.connect(lambda i, t=t: self._single_click(t, i))
             view.customContextMenuRequested.connect(lambda pos, t=t, view=view: self._view_menu(t, view, pos))
             view.selectionModel().selectionChanged.connect(lambda *_a, t=t: self._selection(t))
             view.dropped.connect(lambda paths, target, action, t=t: self.drop(paths, target or t.location, action))
             view.typed.connect(self.start_search)
         t.list.star_clicked.connect(lambda e: self.star([e.path], not t.model.starred(e)))
         t.list.sort_clicked.connect(self._sort_column)
+        t.model.thumbs_ok = lambda e: self._allowed("thumbnails", e.path)
         t.grid.set_icon_size(GridView.ZOOMS[self.zoom])
         t.stack.setCurrentWidget(t.grid if self.view_mode == "grid" else t.list)
         index = self.content.currentIndex() + 1 if self.tabs else 0
@@ -321,14 +324,14 @@ class MainWindow(QMainWindow):
                         continue
                     e.location = pretty(os.path.dirname(path))
                     entries.append(e)
-                entries = fs.sort_entries(entries, self.sort)
+                entries = self._sorted(entries)
             elif loc == "trash:":
                 mode = "trash"
                 for it in trash.items():
                     e = fs.Entry(it.name, it.data, it.is_dir, it.size, it.deleted, location=pretty(
                         os.path.dirname(it.original)), trash=it)
                     entries.append(e)
-                entries = fs.sort_entries(entries, self.sort if self.sort != "name" else "mtime_desc")
+                entries = self._sorted(entries, self.sort if self.sort != "name" else "mtime_desc")
             elif loc == "other:":
                 mode = "other"
                 self.drives = places.drives()
@@ -337,7 +340,7 @@ class MainWindow(QMainWindow):
                     entries.append(fs.Entry(d.label, d.root, True, 0, 0, kind="usb" if d.removable else "drive",
                                             extra=extra))
             else:
-                entries = fs.sort_entries(fs.list_dir(loc, self.show_hidden), self.sort)
+                entries = self._sorted(fs.list_dir(loc, self.show_hidden))
         except OSError as e:
             tab.error = e.strerror or str(e)
         tab.model.stars = {os.path.normcase(p) for p in places.starred()}
@@ -345,11 +348,11 @@ class MainWindow(QMainWindow):
         if mode == "folder":
             for e in entries:
                 if e.is_dir:
-                    self.loader.count(e.path, self.show_hidden)
+                    self._count(e.path)
         elif mode in ("recent", "starred"):
             for e in entries:
                 if e.is_dir:
-                    self.loader.count(e.path, self.show_hidden)
+                    self._count(e.path)
         if keep:
             tab.select_paths(keep, current=False)
         tab.view.verticalScrollBar().setValue(scroll)
@@ -530,7 +533,7 @@ class MainWindow(QMainWindow):
             # Nothing to look for: show the folder, as Files does.
             loc = s["root"]
             try:
-                entries = fs.sort_entries(fs.list_dir(loc, self.show_hidden), self.sort)
+                entries = self._sorted(fs.list_dir(loc, self.show_hidden))
             except OSError:
                 entries = []
             t.model.set_rows(entries, "folder")
@@ -540,7 +543,7 @@ class MainWindow(QMainWindow):
         t.model.set_rows([], "search")
         s["done"] = False
         s["generation"] = self.searcher.start(s["root"], s["text"], s["when"], s["what"], self.show_hidden,
-                                              sync=sync or self.sync_jobs)
+                                              sync=sync or self.sync_jobs, recursive=self.prefs["search_subfolders"])
         self._chrome()
         self._tabbar()
 
@@ -550,7 +553,7 @@ class MainWindow(QMainWindow):
                 t.model.append(batch)
                 for e in batch:
                     if e.is_dir:
-                        self.loader.count(e.path, self.show_hidden)
+                        self._count(e.path)
                 if t is self.tab:
                     self._empty_state()
 
@@ -579,6 +582,13 @@ class MainWindow(QMainWindow):
                 self.new_tab(f.path, switch=False)
         for f in files:
             self.open_file(f.path)
+
+    def _single_click(self, tab: Tab, index) -> None:
+        """Preference "Single click": the clicked item opens (Ctrl / Shift clicks still select)."""
+        if self.prefs["click"] != "single" or QApplication.keyboardModifiers() or not index.isValid():
+            return
+        tab.select_paths([tab.model.rows[index.row()].path])
+        self.open_selected(tab)
 
     def open_file(self, path: str) -> None:
         try:
@@ -714,6 +724,9 @@ class MainWindow(QMainWindow):
         # Stars follow renames and moves.
         if isinstance(job, ops.RenameJob) and job.state == "done":
             places.follow_star(job.path, job.new_path)
+        if isinstance(job, rename.BatchRenameJob):
+            for new, old in job.renamed:
+                places.follow_star(old, new)
         if isinstance(job, (ops.CopyJob, ops.MovePairsJob)) and job.kind == "move":
             pairs = getattr(job, "moved", None) or [(was, now) for now, was in getattr(job, "pairs", [])]
             for now, was in pairs:
@@ -724,6 +737,8 @@ class MainWindow(QMainWindow):
             select = [job.path]
         elif isinstance(job, ops.RenameJob) and job.state == "done":
             select = [job.new_path]
+        elif isinstance(job, rename.BatchRenameJob) and job.renamed:
+            select = [new for new, _old in job.renamed]
         elif isinstance(job, archive.CompressJob) and job.made:
             select = [job.made]
         elif isinstance(job, archive.ExtractJob) and job.created:
@@ -865,8 +880,13 @@ class MainWindow(QMainWindow):
             self.run(ops.TrashDeleteJob(None))
 
     def rename(self) -> None:
-        entries = self.tab.selected()
-        if len(entries) != 1 or entries[0].trash or entries[0].kind in ("drive", "usb"):
+        entries = [e for e in self.tab.selected() if not e.trash and e.kind not in ("drive", "usb")]
+        if len(entries) > 1:  # Files' "Rename N Files"
+            pairs = self._ask("batch_rename", [e.path for e in entries])
+            if pairs:
+                self.run(rename.BatchRenameJob(pairs))
+            return
+        if len(entries) != 1:
             return
         e = entries[0]
         folder = os.path.dirname(e.path)
@@ -985,6 +1005,30 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1500, self._check_drives)
 
     # ================================================================== view
+    def _sorted(self, entries, key: str | None = None):
+        return fs.sort_entries(entries, key or self.sort, self.prefs["folders_first"])
+
+    def _allowed(self, what: str, path: str) -> bool:
+        """Files' "Always / On this computer only / Never" preferences (thumbnails, item counts)."""
+        v = self.prefs[what]
+        return v == "always" or (v == "local" and not places.is_remote(path))
+
+    def _count(self, path: str) -> None:
+        if self._allowed("counts", path):
+            self.loader.count(path, self.show_hidden)
+
+    def preferences(self) -> None:
+        got = self._ask("preferences", dict(self.prefs))
+        if got:
+            self.set_prefs(got)
+
+    def set_prefs(self, prefs: dict) -> None:
+        save_prefs(prefs)
+        for w in WINDOWS:
+            w.prefs = load_prefs()
+            for t in w.tabs:
+                w.load(t)
+
     def set_view(self, mode: str) -> None:
         self.view_mode = mode
         settings.set("view", mode)
@@ -1127,6 +1171,7 @@ class MainWindow(QMainWindow):
         a("new_folder", "New Folder…", self.new_folder, ["Ctrl+Shift+N"])
         a("properties", "Properties", self.properties, ["Ctrl+I", "Alt+Return"], scope="files")
         a("escape", "Clear", self._escape, ["Escape"], scope="files")
+        a("preferences", "Preferences", self.preferences, ["Ctrl+,"])
         a("windows_menu", "Show More Options", lambda: self.windows_menu(), ["Shift+F10"], scope="files")
         self.sort_actions = {}
         for key, text in fs.SORTS.items():
@@ -1198,6 +1243,7 @@ class MainWindow(QMainWindow):
         self.act["folders"].setEnabled(self.shell_reg is not None or shell.available())
         m.addAction(self.act["folders"])
         m.addSeparator()
+        m.addAction(self.act["preferences"])
         m.addAction(self.act["shortcuts"])
         m.addAction("About PR7-E", self._about)
         k = self.headerbar.keys["menu"]
@@ -1258,11 +1304,12 @@ class MainWindow(QMainWindow):
         m.addAction("Move to…", lambda: self.copy_to(move=True))
         m.addAction("Copy to…", lambda: self.copy_to(move=False))
         m.addAction(self.act["trash"])
+        if self.prefs["show_delete"]:
+            m.addAction(self.act["delete"])
         if len(folders) == 1 and not files and self.clipboard_files()[0]:
             m.addAction("Paste Into Folder", lambda: self.paste(folders[0].path))
         m.addSeparator()
-        if len(entries) == 1:
-            m.addAction(self.act["rename"])
+        m.addAction(self.act["rename"])  # one item: Rename; several: Rename N Files
         m.addAction("Compress…", self.compress)
         if len(files) == 1 and not folders and archive.can_extract(files[0].name):
             m.addAction("Extract Here", lambda: self.extract(files[0].path))
@@ -1360,6 +1407,12 @@ class MainWindow(QMainWindow):
             dlg = dialogs.ConfirmDialog(payload["title"], payload["heading"], payload["text"], payload["button"],
                                         self)
             return bool(dlg.exec())
+        if kind == "preferences":
+            dlg = dialogs.PreferencesDialog(payload, self)
+            return dlg.answer() if dlg.exec() else None
+        if kind == "batch_rename":
+            dlg = dialogs.BatchRenameDialog(payload, self)
+            return dlg.answer() if dlg.exec() else None
         if kind == "compress":
             dlg = dialogs.CompressDialog(payload["folder"], payload["name"], payload["have_7z"], self)
             return dlg.answer() if dlg.exec() else None
@@ -1416,6 +1469,28 @@ class MainWindow(QMainWindow):
         if self in WINDOWS:
             WINDOWS.remove(self)
         super().closeEvent(e)
+
+
+PREFS = {"folders_first": True, "click": "double", "show_delete": False, "search_subfolders": True,
+         "thumbnails": "local", "counts": "local"}
+
+
+def load_prefs() -> dict:
+    """Files' preferences, with its defaults."""
+    out = {}
+    for k, default in PREFS.items():
+        if isinstance(default, bool):
+            out[k] = settings.get_bool("pref_" + k, default)
+        else:
+            v = settings.get("pref_" + k, default)
+            out[k] = v if v in {"click": ("double", "single")}.get(k, ("always", "local", "never")) else default
+    return out
+
+
+def save_prefs(prefs: dict) -> None:
+    for k in PREFS:
+        if k in prefs:
+            settings.set("pref_" + k, prefs[k])
 
 
 def new_window(location: str | None = None) -> MainWindow:

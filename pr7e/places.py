@@ -145,6 +145,17 @@ def drive_of(path: str, all_drives: list[Drive] | None = None) -> Drive | None:
     return best
 
 
+def is_remote(path: str) -> bool:
+    """A network location (UNC path or a mapped network drive): Files' "on this computer only" preferences leave
+    these out, as reading them is slow."""
+    if path.startswith(("\\\\", "//")):
+        return True
+    if WINDOWS and len(path) >= 2 and path[1] == ":":
+        import ctypes
+        return ctypes.windll.kernel32.GetDriveTypeW(path[:2] + "\\") == 4  # DRIVE_REMOTE
+    return False
+
+
 def eject(root: str) -> bool:
     """Eject a USB drive or disc as Explorer's Eject does (the shell's Eject verb)."""
     if not WINDOWS:
