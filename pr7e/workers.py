@@ -54,6 +54,8 @@ class JobRunner(QObject):
 
     def start(self, job, sync: bool = False) -> None:
         job.ask = lambda conflict: self.asker.ask("conflict", conflict)
+        if hasattr(job, "ask_password"):
+            job.ask_password = lambda name: self.asker.ask("password", name)
         self.running.append(job)
         if sync:  # tests: run here and now
             job.run()
@@ -111,6 +113,27 @@ class _Thumb(QRunnable):
         self.signals.thumb.emit(self.path, self.mtime, img)
 
 
+class _ShellThumb(QRunnable):
+    """Windows' own thumbnail (videos, PDFs, Office files, HEIC... whatever has a thumbnail handler)."""
+
+    def __init__(self, path, mtime, size, signals):
+        super().__init__()
+        self.path, self.mtime, self.size, self.signals = path, mtime, size, signals
+
+    def run(self):
+        img = None
+        try:
+            from . import winshell
+            got = winshell.thumbnail(self.path, self.size)
+            if got:
+                w, h, data, alpha = got
+                fmt = QImage.Format_ARGB32_Premultiplied if alpha else QImage.Format_RGB32
+                img = QImage(data, w, h, w * 4, fmt).copy()  # copy: the bytes object goes away
+        except Exception:  # noqa: BLE001 - no thumbnail: the file keeps its icon
+            img = None
+        self.signals.thumb.emit(self.path, self.mtime, img)
+
+
 class _Count(QRunnable):
     def __init__(self, path, show_hidden, signals):
         super().__init__()
@@ -121,13 +144,15 @@ class _Count(QRunnable):
 
 
 class Loader(QObject):
-    """Thumbnails for pictures (Qt's image readers: JPEG, PNG, GIF, WebP, BMP, TIFF, ICO) and item counts for
+    """Thumbnails (pictures with Qt's image readers: JPEG, PNG, GIF, WebP, BMP, TIFF, ICO; on Windows everything else
+    with a thumbnail handler through the shell: videos, PDFs, Office files, HEIC...) and item counts for
     folders. Thumbnails are cached by path and modification time, so going back to a folder is instant."""
 
     thumb_ready = Signal(str)
     count_ready = Signal(str, int)
-    MAX_BYTES = 80_000_000      # bigger pictures keep their icon
+    MAX_BYTES = 80_000_000      # bigger pictures keep their icon (Qt decodes them whole)
     THUMB = 256                 # px, enough for the largest zoom
+    SHELL_KINDS = {"video", "document", "image"}  # Windows makes these (images Qt can't read: HEIC, SVG...)
 
     def __init__(self):
         super().__init__()
@@ -137,6 +162,8 @@ class Loader(QObject):
         self.signals.thumb.connect(self._thumb, Qt.QueuedConnection)
         self.signals.count.connect(self.count_ready, Qt.QueuedConnection)
         self.cache: OrderedDict[tuple[str, float], QImage | None] = OrderedDict()
+        from . import winshell
+        self.shell = winshell.available  # Windows' thumbnails; elsewhere pictures only
         self.pending: set[tuple[str, float]] = set()
 
     def thumbnail(self, e: fs.Entry) -> QImage | None:
@@ -145,10 +172,15 @@ class Loader(QObject):
         if key in self.cache:
             self.cache.move_to_end(key)
             return self.cache[key]
-        if key not in self.pending and e.kind == "image" and e.size <= self.MAX_BYTES and \
-                e.name.rsplit(".", 1)[-1].lower() in fs.IMAGE_EXTS:
+        if key in self.pending or e.is_dir:
+            return None
+        ext = e.name.rsplit(".", 1)[-1].lower() if "." in e.name else ""
+        if e.kind == "image" and ext in fs.IMAGE_EXTS and e.size <= self.MAX_BYTES:
             self.pending.add(key)
             self.pool.start(_Thumb(e.path, e.mtime, self.THUMB, self.signals))
+        elif self.shell and e.kind in self.SHELL_KINDS:
+            self.pending.add(key)
+            self.pool.start(_ShellThumb(e.path, e.mtime, self.THUMB, self.signals))
         return None
 
     def _thumb(self, path, mtime, img):

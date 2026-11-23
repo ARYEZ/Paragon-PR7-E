@@ -397,3 +397,57 @@ def test_finishes(win):
     assert theme.FINISH == "aurora"
     w.set_finish("obsidian")
     assert theme.FINISH == "obsidian"
+
+
+def test_compress_and_extract_from_the_menu(win, home, monkeypatch):
+    monkeypatch.setenv("PR7E_7Z", os.devnull + "-missing")   # Python's zip: the same on every system
+    w = win
+    w.go(str(home / "Music" / "Paragon"))
+    w.tab.select_paths([str(home / "Music" / "Paragon" / "ELSEWORLD")])
+    asked = []
+    w.answers["compress"] = lambda p: (asked.append(p), ("ELSEWORLD", ".zip", ""))[1]
+    w.compress()
+    assert asked[0]["name"] == "ELSEWORLD" and asked[0]["have_7z"] is False
+    z = home / "Music" / "Paragon" / "ELSEWORLD.zip"
+    assert z.is_file() and [e.name for e in w.tab.selected()] == ["ELSEWORLD.zip"]
+    menus = []
+    w.answers["context"] = menus.append
+    w._item_menu(w.tab.selected())
+    texts = [a.text() for a in menus[-1].actions()]
+    assert "Extract Here" in texts and "Extract to…" in texts and "Compress…" in texts
+    w.answers["choose_folder"] = lambda p: str(home / "Documents")
+    w.extract(str(z), choose=True)
+    assert sorted(os.listdir(home / "Documents" / "ELSEWORLD")) == ["01 Portal.flac", "02 Ruins of Elsewhere.flac",
+                                                                  "03 Static Bloom.mp3"]
+    assert (home / "Documents" / "ELSEWORLD" / "01 Portal.flac").read_bytes() == \
+        (home / "Music" / "Paragon" / "ELSEWORLD" / "01 Portal.flac").read_bytes()
+    w.undo()
+    assert not (home / "Documents" / "ELSEWORLD").exists()
+
+
+def test_compress_dialog(qapp, tmp_path):
+    from pr7e.dialogs import CompressDialog
+    (tmp_path / "Taken.zip").write_bytes(b"x")
+    d = CompressDialog(str(tmp_path), "Taken", have_7z=False)
+    assert not d.ok.isEnabled() and "already exists" in d.problem.text()
+    d.name.setText("New")
+    assert d.ok.isEnabled() and d.answer() == ("New", ".zip", "")
+    model = d.fmt.model()
+    assert not model.item(d.fmt.findText(".7z")).isEnabled()       # needs 7-Zip
+    d2 = CompressDialog(str(tmp_path), "New", have_7z=True)
+    d2.fmt.setCurrentText("Encrypted .zip")
+    assert d2.password.isVisibleTo(d2) and not d2.ok.isEnabled()  # a password first
+    d2.password.setText("pw")
+    assert d2.ok.isEnabled() and d2.answer() == ("New", "Encrypted .zip", "pw")
+
+
+def test_show_more_options_needs_one_folder(win, home):
+    from pr7e import winshell
+    w = win
+    menus = []
+    w.answers["context"] = menus.append
+    w.go(str(home / "Documents"))
+    w.tab.select_paths([str(home / "Documents" / "notes.txt")])
+    w._item_menu(w.tab.selected())
+    more = next(a for a in menus[-1].actions() if a.text() == "Show More Options")
+    assert more.isEnabled() == winshell.available

@@ -361,3 +361,106 @@ class AboutDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.Close)
         bb.rejected.connect(self.reject)
         body.addWidget(bb)
+
+
+class CompressDialog(QDialog):
+    """Files' "Create Compressed Archive": the name, the format (with Files' notes on each), a password for the
+    encrypted ones. Formats that need 7-Zip are off when it isn't there."""
+
+    NOTES = {".zip": "Compatible with all operating systems.",
+             "Encrypted .zip": "Password protected (AES-256). Opens in 7-Zip, PR7-Z and most archive programs.",
+             ".tar.xz": "Smaller archives, but Linux and Mac only.",
+             ".7z": "Smaller archives, but need 7-Zip, PR7-Z or similar to open."}
+
+    def __init__(self, folder: str, name: str, have_7z: bool, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QComboBox
+        from . import archive
+        self.folder = folder
+        self.setWindowTitle("Create Compressed Archive")
+        self.resize(560, 0)
+        body = _shell(self, "COMPRESS")
+        body.addWidget(_field("Archive name"))
+        row = QHBoxLayout()
+        self.name = QLineEdit(name)
+        self.fmt = QComboBox()
+        for label, _ext, needs, _enc in archive.FORMATS:
+            self.fmt.addItem(label)
+            if needs and not have_7z:
+                self.fmt.model().item(self.fmt.count() - 1).setEnabled(False)
+        row.addWidget(self.name, 1)
+        row.addWidget(self.fmt)
+        body.addLayout(row)
+        self.note = QLabel("")
+        self.note.setProperty("role", "dim")
+        self.note.setWordWrap(True)
+        body.addWidget(self.note)
+        self.pw_label = _field("Password")
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        body.addWidget(self.pw_label)
+        body.addWidget(self.password)
+        if not have_7z:
+            n = QLabel("Encrypted .zip and .7z need 7-Zip’s engine: install PR7-Z to use them.")
+            n.setProperty("role", "dim")
+            n.setWordWrap(True)
+            body.addWidget(n)
+        self.problem = QLabel("")
+        self.problem.setProperty("role", "error")
+        body.addWidget(self.problem)
+        bb = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.ok = bb.addButton("Create", QDialogButtonBox.AcceptRole)
+        self.ok.setDefault(True)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        body.addWidget(bb)
+        for sig in (self.name.textChanged, self.fmt.currentIndexChanged, self.password.textChanged):
+            sig.connect(self._check)
+        self.name.selectAll()
+        self._check()
+
+    def _ext(self) -> str:
+        from . import archive
+        return next(f[1] for f in archive.FORMATS if f[0] == self.fmt.currentText())
+
+    def _check(self, *_):
+        enc = self.fmt.currentText() == "Encrypted .zip"
+        self.pw_label.setVisible(enc)
+        self.password.setVisible(enc)
+        self.note.setText(self.NOTES[self.fmt.currentText()])
+        name = self.name.text().strip()
+        problem = fs.name_problem(name + self._ext(), self.folder) if name else ""
+        self.problem.setText(problem)
+        self.ok.setEnabled(bool(name) and not problem and (not enc or bool(self.password.text())))
+
+    def accept(self):
+        if self.ok.isEnabled():
+            super().accept()
+
+    def answer(self):
+        return (self.name.text().strip(), self.fmt.currentText(), self.password.text())
+
+
+class PasswordDialog(QDialog):
+    """An archive needs its password."""
+
+    def __init__(self, name: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Password Required")
+        self.resize(480, 0)
+        body = _shell(self, "PASSWORD REQUIRED")
+        t = QLabel(f"“{name}” is password protected.")
+        t.setWordWrap(True)
+        body.addWidget(t)
+        self.edit = QLineEdit()
+        self.edit.setEchoMode(QLineEdit.Password)
+        body.addWidget(self.edit)
+        bb = QDialogButtonBox(QDialogButtonBox.Cancel)
+        ok = bb.addButton("Extract", QDialogButtonBox.AcceptRole)
+        ok.setDefault(True)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        body.addWidget(bb)
+
+    def answer(self):
+        return self.edit.text()

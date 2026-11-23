@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+- **Compress…**: Files' dialog (name; .zip, Encrypted .zip, .tar.xz, .7z). .zip and .tar.xz are made by Python;
+  .7z and encrypted .zip (AES-256) by PR7-Z's 7-Zip engine (else an installed 7-Zip).
+- **Extract Here / Extract to…** for everything 7-Zip reads (zip, 7z, rar, tar.*, iso, cab...); asks for the
+  password when there is one. One item at the top comes out as itself, several go in a folder named after the
+  archive; taken names get " (2)". Undo trashes what was made.
+- **Show More Options** (and Shift+F10): the full Windows right-click menu, with other programs' items (PR7-Z,
+  PR7-W, PR7-L, Send to, Defender...). Shift+right-click opens it straight away with Windows' extended items.
+- **Thumbnails for videos, PDFs, Office files and HEIC** from Windows' own thumbnail handlers (what Explorer shows).
+
 ## 0.1.1
 
 - **Use PR7-E for Folders** (main menu, and an installer option, off by default): double-clicking a folder or drive

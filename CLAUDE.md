@@ -29,6 +29,14 @@ Linux for tests. The owner writes Python; explain the why of changes.
   so each switch keeps the other; a previous default is saved and put back. CLI / installer: `--register-menu`,
   `--unregister-menu`, `--default-folders on|off`, `--unregister` (everything). `app.folders_from` turns Explorer's
   `C:"` (from "C:\\") into the drive root.
+- `pr7e/archive.py` (no Qt): CompressJob / ExtractJob (ops.Job). 7-Zip found by `find_7z` (PR7E_7Z, PR7-Z's
+  InstallLocation from its uninstall key + `_internal\engine\7z.exe`, installed 7-Zip, PATH); run with `-bsp1`
+  for progress, `-p` always given (never a prompt), `ask_password` asked again on a wrong one. .zip / .tar.xz made by
+  Python; .tar.* always extracted by tarfile (7-Zip peels one layer). Staging folder in the destination, then Files'
+  one-item / folder rule with `free_name`. Tests use the Linux 7zz (26.01) when there's one.
+- `pr7e/winshell.py` (Windows, ctypes COM): `thumbnail` (IShellItemImageFactory, THUMBNAILONLY), `show_menu`
+  (IContextMenu from SHBindToParent + GetUIObjectOf; a hidden host window forwards INITMENUPOPUP etc. to
+  IContextMenu2/3 so Send to fills; TrackPopupMenuEx at GetCursorPos), `menu_items` (tests). COM is STA per thread.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

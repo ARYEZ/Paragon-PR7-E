@@ -126,7 +126,8 @@ class EntryModel(QAbstractTableModel):
         if role == ENTRY:
             return e
         if role == THUMB:
-            return self.loader.thumbnail(e) if self.loader is not None and e.kind == "image" else None
+            return self.loader.thumbnail(e) if self.loader is not None and e.kind in ("image", "video", "document") \
+                and e.trash is None else None
         return None
 
     def flags(self, index):

@@ -15,7 +15,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMenu, QStackedWidget,
                                QVBoxLayout, QWidget)
 
-from . import fs, ops, places, settings, system, theme, trash
+from . import archive, fs, ops, places, settings, system, theme, trash, winshell
 from .views import (local_paths, EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
                     SearchFilters, Sidebar, TabStrip, TrashBar)
 from .widgets import Header
@@ -724,6 +724,10 @@ class MainWindow(QMainWindow):
             select = [job.path]
         elif isinstance(job, ops.RenameJob) and job.state == "done":
             select = [job.new_path]
+        elif isinstance(job, archive.CompressJob) and job.made:
+            select = [job.made]
+        elif isinstance(job, archive.ExtractJob) and job.created:
+            select = list(job.created)
         elif isinstance(job, ops.CopyJob) and job.origin == "":
             select = job.created or [now for now, _was in job.moved]
         if select and self.tab.search is None and os.path.normcase(self.tab.location) == \
@@ -743,7 +747,9 @@ class MainWindow(QMainWindow):
                 self.run(ops.DeleteJob(job.untrashable))
         if job.errors:
             self._message("Errors", {"copy": "Some files couldn’t be copied.",
-                                     "move": "Some files couldn’t be moved."}.get(
+                                     "move": "Some files couldn’t be moved.",
+                                     "compress": "The archive couldn’t be made.",
+                                     "extract": "The archive couldn’t be extracted."}.get(
                 job.kind, "The operation didn’t complete."), job.errors)
         self._chrome()
 
@@ -878,6 +884,43 @@ class MainWindow(QMainWindow):
                                   "folder": folder, "initial": "", "is_dir": True, "current": ""})
         if name and not fs.name_problem(name, folder, True):
             self.run(ops.NewFolderJob(folder, name))
+
+    def compress(self) -> None:
+        """Files' Compress: name and format asked, the archive made next to the items."""
+        paths = self.paths_selected()
+        if not paths or self.tab.location in ("trash:", "other:"):
+            return
+        folder = os.path.dirname(paths[0])
+        got = self._ask("compress", {"folder": folder, "name": archive.default_name(paths),
+                                     "have_7z": archive.find_7z() is not None})
+        if got:
+            name, fmt, password = got
+            self.run(archive.CompressJob(paths, folder, name, fmt, password))
+
+    def extract(self, path: str, choose: bool = False) -> None:
+        """Extract Here (next to the archive) or Extract to… (a folder you pick)."""
+        dest = os.path.dirname(path)
+        if choose:
+            dest = self._ask("choose_folder", {"title": "Select Extract Destination", "start": dest})
+            if not dest:
+                return
+        self.run(archive.ExtractJob(path, dest))
+
+    def windows_menu(self, entries: list[fs.Entry] | None = None, extended: bool = False) -> None:
+        """Show More Options: the full Windows right-click menu (other programs' items, Send to...). Opened after
+        PR7-E's own menu has closed; what it changes is picked up by the folder watcher."""
+        entries = entries if entries is not None else self.tab.selected()
+        paths = [e.path for e in entries if e.trash is None and e.kind not in ("drive", "usb")] or \
+            [e.path for e in entries if e.kind in ("drive", "usb")]
+        if not paths or not winshell.available:
+            return
+
+        def show():
+            try:
+                winshell.show_menu(paths, int(self.winId()), extended)
+            except OSError as e:
+                self._message("Show More Options", "The Windows menu couldn\u2019t be opened.", [str(e)])
+        QTimer.singleShot(0, show)
 
     def star(self, paths: list[str], on: bool) -> None:
         places.set_starred(paths, on)
@@ -1084,6 +1127,7 @@ class MainWindow(QMainWindow):
         a("new_folder", "New Folder…", self.new_folder, ["Ctrl+Shift+N"])
         a("properties", "Properties", self.properties, ["Ctrl+I", "Alt+Return"], scope="files")
         a("escape", "Clear", self._escape, ["Escape"], scope="files")
+        a("windows_menu", "Show More Options", lambda: self.windows_menu(), ["Shift+F10"], scope="files")
         self.sort_actions = {}
         for key, text in fs.SORTS.items():
             act = QAction(text, self, checkable=True)
@@ -1169,6 +1213,10 @@ class MainWindow(QMainWindow):
             view.selectionModel().select(idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows)
         entries = tab.selected() if idx.isValid() else []
         gpos = view.viewport().mapToGlobal(pos)
+        if entries and winshell.available and QApplication.keyboardModifiers() & Qt.ShiftModifier and \
+                tab.location not in ("trash:",) and "context" not in self.answers:
+            self.windows_menu(entries, extended=True)  # Shift+right-click: Windows' menu with its extended items
+            return None
         return self._item_menu(entries, gpos) if entries else self._background_menu(gpos)
 
     def _item_menu(self, entries: list[fs.Entry], gpos=None) -> QMenu:
@@ -1215,18 +1263,18 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         if len(entries) == 1:
             m.addAction(self.act["rename"])
-        later = m.addAction("Compress…")
-        later.setEnabled(False)  # PR7-E 0.2
-        if len(files) == 1 and files[0].kind == "archive":
-            m.addAction("Extract Here").setEnabled(False)
+        m.addAction("Compress…", self.compress)
+        if len(files) == 1 and not folders and archive.can_extract(files[0].name):
+            m.addAction("Extract Here", lambda: self.extract(files[0].path))
+            m.addAction("Extract to…", lambda: self.extract(files[0].path, choose=True))
         m.addSeparator()
         on = all(t.model.starred(e) for e in entries)
         m.addAction("Unstar" if on else "Star", lambda: self.star([e.path for e in entries], not on))
         m.addAction(self.act["properties"])
         m.addSeparator()
-        more = m.addAction("Show More Options")
+        more = m.addAction("Show More Options", lambda: self.windows_menu(entries))
         more.setShortcut(QKeySequence("Shift+F10"))
-        more.setEnabled(False)  # PR7-E 0.2: the full Windows menu
+        more.setEnabled(winshell.available and winshell.same_folder([e.path for e in entries]))
         return self._popup(m, gpos)
 
     def _background_menu(self, gpos=None) -> QMenu:
@@ -1312,6 +1360,12 @@ class MainWindow(QMainWindow):
             dlg = dialogs.ConfirmDialog(payload["title"], payload["heading"], payload["text"], payload["button"],
                                         self)
             return bool(dlg.exec())
+        if kind == "compress":
+            dlg = dialogs.CompressDialog(payload["folder"], payload["name"], payload["have_7z"], self)
+            return dlg.answer() if dlg.exec() else None
+        if kind == "password":
+            dlg = dialogs.PasswordDialog(payload, self)
+            return dlg.answer() if dlg.exec() else None
         if kind == "choose_folder":
             return QFileDialog.getExistingDirectory(self, payload["title"], payload["start"]) or None
         if kind == "message":
