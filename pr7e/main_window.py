@@ -82,6 +82,7 @@ class Tab(QWidget):
         self.search: dict | None = None        # {"text", "when", "what", "root", "generation", "done"}
         self.loading = False                    # a server folder being listed
         self.pending_select: list | None = None  # what to select once a server listing arrives
+        self.expanded: set[str] = set()         # list view: folders opened in place (normcase paths)
         self.error = ""
 
     @property
@@ -253,6 +254,7 @@ class MainWindow(QMainWindow):
             view.typed.connect(self.start_search)
         t.list.star_clicked.connect(lambda e: self.star([e.path], not t.model.starred(e)))
         t.list.sort_clicked.connect(self._sort_column)
+        t.list.expand.connect(lambda e, on, t=t: self.expand_folder(t, e, on))
         t.model.thumbs_ok = lambda e: self._allowed("thumbnails", e.path)
         t.grid.set_icon_size(GridView.ZOOMS[self.zoom])
         t.stack.setCurrentWidget(t.grid if self.view_mode == "grid" else t.list)
@@ -389,10 +391,12 @@ class MainWindow(QMainWindow):
                     entries.append(fs.Entry(d.label, d.root, True, 0, 0, kind="usb" if d.removable else "drive",
                                             extra=extra))
             else:
-                entries = self._sorted(fs.list_dir(loc, self.show_hidden))
+                entries = self._with_children(self._sorted(fs.list_dir(loc, self.show_hidden)), tab)
         except OSError as e:
             tab.error = e.strerror or str(e)
         tab.model.stars = {os.path.normcase(p) for p in places.starred()}
+        tab.model.expandable = mode == "folder" and self._expanding()
+        tab.model.expanded = tab.expanded if tab.model.expandable else set()
         tab.model.set_rows(entries, mode)
         if mode == "folder":
             for e in entries:
@@ -891,6 +895,9 @@ class MainWindow(QMainWindow):
     # ================================================================== watching folders
     def _watch(self):
         want = {t.location for t in self.tabs if t.location not in places.SPECIAL and not servers.is_remote(t.location)}
+        for t in self.tabs:  # open folders in the list view are watched too
+            if t.model.expandable:
+                want |= {e.path for e in t.model.rows if e.is_dir and os.path.normcase(e.path) in t.expanded}
         have = set(self.watcher.directories())
         if have - want:
             self.watcher.removePaths(list(have - want))
@@ -905,6 +912,9 @@ class MainWindow(QMainWindow):
     def _reload_dirty(self):
         dirty, self.dirty = self.dirty, set()
         for t in self.tabs:
+            if t.search is None and t.model.expandable and any(
+                    key(e.path) in dirty for e in t.model.rows if e.depth == 0 and e.is_dir):
+                dirty.add(key(t.location))  # something changed inside a folder opened in place
             if t.search is None and (key(t.location) in dirty or
                                      t.location in ("trash:", "starred:", "recent:") and "*" in dirty):
                 if t.location not in places.SPECIAL and not servers.is_remote(t.location) and \
@@ -995,6 +1005,8 @@ class MainWindow(QMainWindow):
             select = [job.new_path]
         elif isinstance(job, rename.BatchRenameJob) and job.renamed:
             select = [new for new, _old in job.renamed]
+        elif isinstance(job, ops.NewDocumentJob) and job.state == "done":
+            select = [job.path]
         elif isinstance(job, archive.CompressJob) and job.made:
             select = [job.made]
         elif isinstance(job, archive.ExtractJob) and job.created:
@@ -1011,6 +1023,9 @@ class MainWindow(QMainWindow):
             self.load(self.tab, keep_selection=False)
             self.tab.select_paths(select)
             self.tab.view.setFocus()
+        if isinstance(job, ops.NewDocumentJob) and job.state == "done" and job.origin == "" and select and \
+                self.tab.selected() and self.tab.selected()[0].path == job.path:
+            QTimer.singleShot(0, self.rename)  # Files opens the rename box on the new file
         if isinstance(job, ops.TrashJob) and job.untrashable:
             names = [os.path.basename(p) for p in job.untrashable]
             if self._ask("confirm", {
@@ -1339,6 +1354,45 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1500, self._check_drives)
 
     # ================================================================== view
+    def _expanding(self) -> bool:
+        return bool(self.prefs.get("expand_folders")) and self.view_mode == "list"
+
+    def _with_children(self, entries: list[fs.Entry], tab: Tab, depth: int = 0) -> list[fs.Entry]:
+        """The rows with each folder opened in place followed by its own (sorted) contents, indented."""
+        if not self._expanding() or not tab.expanded:
+            return entries
+        out = []
+        for e in entries:
+            e.depth = depth
+            out.append(e)
+            if e.is_dir and os.path.normcase(e.path) in tab.expanded:
+                try:
+                    kids = self._sorted(fs.list_dir(e.path, self.show_hidden))
+                except OSError:
+                    kids = []
+                out.extend(self._with_children(kids, tab, depth + 1))
+        return out
+
+    def expand_folder(self, tab: Tab, e: fs.Entry, on=None) -> None:
+        """Open a folder in place in the list view (or close it, and everything opened inside it). Left on an item
+        inside an open folder goes to that folder's row, as in Files."""
+        k = os.path.normcase(e.path)
+        if on is False and (not e.is_dir or k not in tab.expanded):
+            parent = os.path.normcase(os.path.dirname(e.path))
+            if parent in tab.expanded:
+                tab.select_paths([os.path.dirname(e.path)])
+            return
+        opening = (k not in tab.expanded) if on is None else on
+        if opening:
+            if k in tab.expanded:
+                return
+            tab.expanded.add(k)
+        else:
+            tab.expanded = {x for x in tab.expanded if x != k and not x.startswith(k + os.sep)}
+        keep = [x.path for x in tab.selected()] or [e.path]
+        self.load(tab, keep_selection=False)
+        tab.select_paths(keep)
+
     def _sorted(self, entries, key: str | None = None):
         return fs.sort_entries(entries, key or self.sort, self.prefs["folders_first"])
 
@@ -1371,6 +1425,8 @@ class MainWindow(QMainWindow):
         for t in self.tabs:
             keep = [e.path for e in t.selected()]
             t.stack.setCurrentWidget(t.grid if mode == "grid" else t.list)
+            if t.model.mode == "folder" and (t.expanded or self.prefs.get("expand_folders")):
+                self.load(t)  # the arrows and folders open in place belong to the list view only
             t.select_paths(keep)
         self._chrome()
         self.tab.view.setFocus()
@@ -1667,6 +1723,8 @@ class MainWindow(QMainWindow):
             m.addAction("Extract Here", lambda: self.extract(files[0].path))
             m.addAction("Extract to…", lambda: self.extract(files[0].path, choose=True))
         m.addSeparator()
+        if len(files) == 1 and not folders and files[0].name.lower().endswith(places.WALLPAPER_EXTS):
+            m.addAction("Set as Background\u2026", lambda: self.set_background(files[0].path))
         on = all(t.model.starred(e) for e in entries)
         m.addAction("Unstar" if on else "Star", lambda: self.star([e.path for e in entries], not on))
         m.addAction(self.act["properties"])
@@ -1675,6 +1733,32 @@ class MainWindow(QMainWindow):
         more.setShortcut(QKeySequence("Shift+F10"))
         more.setEnabled(winshell.available and winshell.same_folder([e.path for e in entries]))
         return self._popup(m, gpos)
+
+    def _templates_menu(self, menu: QMenu, items) -> None:
+        """Files' New Document submenu: the Templates folder (folders as submenus), an empty document, and a way
+        to the folder to add your own."""
+        for name, path, kids in items:
+            if kids:
+                self._templates_menu(menu.addMenu(name), kids)
+            else:
+                menu.addAction(name, lambda p=path: self.new_document(p))
+        if menu.title() == "New Document":
+            if items:
+                menu.addSeparator()
+            menu.addAction("Empty Document", lambda: self.new_document(None))
+            menu.addSeparator()
+            menu.addAction("Open Templates Folder", lambda: self.go(places.templates_dir()))
+
+    def new_document(self, template: str | None) -> None:
+        """A new file from a template (or empty) in the folder shown; then Rename, as Files does."""
+        folder = self.tab.location
+        if folder in places.SPECIAL or servers.is_remote(folder) or self.tab.search is not None:
+            return
+        self.run(ops.NewDocumentJob(folder, template))
+
+    def set_background(self, path: str) -> None:
+        if not places.set_wallpaper(path):
+            self._message("Set as Background", "The picture couldn\u2019t be set as the background.", [])
 
     def _background_menu(self, gpos=None) -> QMenu:
         """Files' menu for the folder itself (empty space, and the path bar's folder menu)."""
@@ -1689,6 +1773,8 @@ class MainWindow(QMainWindow):
         nf = m.addAction("New Folder\u2026", self.new_folder)
         nf.setShortcut(QKeySequence("Ctrl+Shift+N"))
         nf.setEnabled(real)
+        if real and not servers.is_remote(t.location):
+            self._templates_menu(m.addMenu("New Document"), places.templates())  # Files: under New Folder
         p = m.addAction("Paste", self.paste)
         p.setShortcut(QKeySequence("Ctrl+V"))
         p.setEnabled(real and bool(self.clipboard_files()[0]))
@@ -1853,6 +1939,7 @@ class MainWindow(QMainWindow):
 
 
 PREFS = {"folders_first": True, "click": "double", "show_delete": False, "search_subfolders": True,
+         "expand_folders": False,
          "thumbnails": "local", "counts": "local"}
 
 

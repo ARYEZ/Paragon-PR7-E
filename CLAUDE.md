@@ -52,6 +52,10 @@ Linux for tests. The owner writes Python; explain the why of changes.
 - Windows shares (`places.share_path` / `share_root` / `share_label` / `connect_share` = WNetAddConnection2W,
   `shares()` in settings): UNC folders are plain local locations; the window's `open_share` asks to log in only when
   Windows can't open the folder. CI opens \\localhost\C$ for real.
+- Expand folders (pref `expand_folders`, list view only): the model stays a flat list; `_with_children` puts each
+  open folder's sorted contents after it with `Entry.depth`; `Tab.expanded` holds the open folders; `ListDelegate`
+  paints the indent and arrow, `ListView.expand` asks to open / close. New Document: `places.templates()` (Windows'
+  FOLDERID_Templates) and `ops.NewDocumentJob`; Set as Background: `places.set_wallpaper` (SPI_SETDESKWALLPAPER).
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

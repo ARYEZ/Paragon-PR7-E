@@ -529,3 +529,28 @@ class NewFolderJob(Job):
         self.changed.add(os.path.dirname(self.path))
         self.done_items = 1
         self.undo = TrashJob([self.path], label="Create Folder")
+
+
+class NewDocumentJob(Job):
+    """New Document: a copy of a template (or an empty file) in the folder, under the template's name (" (2)" when
+    it's taken). Undo moves it to Trash."""
+    kind = "mkdir"
+    undo_label = "New Document"
+
+    def __init__(self, folder: str, template: str | None, name: str = ""):
+        super().__init__()
+        self.template = template
+        base = name or (os.path.basename(template) if template else "Untitled Document.txt")
+        self.path = os.path.join(os.path.abspath(folder), fs.free_name(base, folder))
+        self.title = f"Creating {_quote(self.path)}"
+        self.total_items = 1
+
+    def work(self):
+        if self.template:
+            shutil.copyfile(self.template, self.path)
+        else:
+            with open(self.path, "x", encoding="utf-8"):
+                pass
+        self.changed.add(os.path.dirname(self.path))
+        self.done_items = 1
+        self.undo = TrashJob([self.path], label="New Document")

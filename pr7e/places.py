@@ -156,6 +156,70 @@ def is_remote(path: str) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------- templates, wallpaper
+TEMPLATES_GUID = "A63293E8-664E-48DB-A079-DF759E0509F7"   # FOLDERID_Templates
+
+
+def templates_dir() -> str:
+    """Where New Document's templates live: Windows' Templates folder (the one Explorer's templates use, made if
+    it isn't there), else XDG_TEMPLATES_DIR / ~/Templates."""
+    if WINDOWS:
+        path = known_folder(TEMPLATES_GUID) or os.path.join(os.environ.get("APPDATA", home()), "Microsoft",
+                                                            "Windows", "Templates")
+    else:
+        path = _xdg_dirs().get("TEMPLATES", os.path.join(home(), "Templates"))
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+def templates(folder: str | None = None) -> list[tuple[str, str, list]]:
+    """Files' New Document menu: (name shown, path, children) for each template; folders become submenus.
+    Hidden files and Windows' own desktop.ini are left out; names are shown without their extension."""
+    folder = folder or templates_dir()
+    out = []
+    try:
+        names = sorted(os.listdir(folder), key=str.lower)
+    except OSError:
+        return []
+    for n in names:
+        p = os.path.join(folder, n)
+        if n.startswith(".") or n.lower() == "desktop.ini":
+            continue
+        if os.path.isdir(p):
+            kids = templates(p)
+            if kids:
+                out.append((n, p, kids))
+        else:
+            out.append((os.path.splitext(n)[0] or n, p, []))
+    return out
+
+
+WALLPAPER_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".jfif")
+
+
+def set_wallpaper(path: str, persist: bool = True) -> bool:
+    """Files' Set as Background: Windows' SystemParametersInfoW(SPI_SETDESKWALLPAPER); `persist` keeps it after a
+    restart (tests on CI pass False). On Linux, GNOME's setting."""
+    path = os.path.abspath(path)
+    if WINDOWS:
+        import ctypes
+        flags = 0x1 | 0x2 if persist else 0  # SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+        return bool(ctypes.windll.user32.SystemParametersInfoW(20, 0, ctypes.c_wchar_p(path), flags))
+    import shutil as _sh
+    import subprocess
+    if not _sh.which("gsettings"):
+        return False
+    uri = "file://" + path
+    ok = True
+    for key in ("picture-uri", "picture-uri-dark"):
+        ok &= subprocess.run(["gsettings", "set", "org.gnome.desktop.background", key, uri],
+                             capture_output=True).returncode == 0
+    return ok
+
+
 # --------------------------------------------------------------------------- Windows network shares
 def share_path(address: str) -> str | None:
     """"\\\\server\\share\\folder", "//server/share" or Files' "smb://server/share/folder" -> the UNC path

@@ -27,6 +27,7 @@ class Entry:
     kind: str = ""
     trash: object = None       # a trash.TrashItem for entries in Trash
     extra: str = ""            # Other Locations: "120.3 GB free of 512.1 GB"
+    depth: int = 0             # list view with expanded folders: how far in (0 = the folder shown)
 
     def __post_init__(self):
         self.kind = self.kind or kind_of(self.name, self.is_dir)

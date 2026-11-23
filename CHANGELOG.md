@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- **Expand folders in list view** (Preferences, off by default as in Files): folders get an arrow that opens them in
+  place, indented; Right / Left open and close (Left inside goes to the folder's row); what's inside works like any
+  item (select, copy, rename...) and changes inside show up. The grid keeps showing just the folder.
+- **New Document** (empty space's menu, under New Folder): your Windows Templates folder (folders become submenus),
+  Empty Document, and Open Templates Folder to add your own; the new file is selected and Rename opens. Undo trashes
+  it.
+- **Set as Background…** for a picture (Windows' own wallpaper setting).
+
 ## 0.5.0
 
 - **Windows network shares**: type \\\\pc\\share (or Files' smb://pc/share) in Connect to Server or Ctrl+L. A share

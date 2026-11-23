@@ -10,7 +10,7 @@ from PySide6.QtCore import (QAbstractListModel, QAbstractTableModel, QMimeData, 
                             Qt, QUrl, Signal)
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListView,
-                               QMenu, QProgressBar, QPushButton, QStyle, QStyledItemDelegate, QTreeView, QVBoxLayout,
+                               QMenu, QProgressBar, QPushButton, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTreeView, QVBoxLayout,
                                QWidget)
 
 from . import fs, places, theme
@@ -62,6 +62,8 @@ class EntryModel(QAbstractTableModel):
         self.stars: set[str] = set()
         self.by_path: dict[str, int] = {}
         self.thumbs_ok = lambda e: True   # the window's "Show thumbnails" preference
+        self.expandable = False           # list view: folders open in place (Files' "Expand folders")
+        self.expanded: set[str] = set()   # which (normcase paths)
 
     def set_rows(self, rows: list[fs.Entry], mode: str = "folder") -> None:
         self.beginResetModel()
@@ -337,12 +339,42 @@ class GridView(DropMixin, QListView):
 
 
 # --------------------------------------------------------------------------- list view
+INDENT = 20
+
+
+def expander_rect(rect, depth: int) -> QRectF:
+    """Where a folder's open / close arrow is, in the NAME cell."""
+    r = QRectF(rect)
+    return QRectF(r.left() + 4 + depth * INDENT, r.center().y() - 8, 16, 16)
+
+
 class ListDelegate(QStyledItemDelegate):
-    """The star column: an outline star, filled orange when starred."""
+    """The star column (an outline star, filled orange when starred) and, with "Expand folders", the NAME cell's
+    indent and open / close arrow."""
 
     def paint(self, p, option, index):
         model = index.model()
-        if model.columns()[index.column()] != "":
+        col = model.columns()[index.column()]
+        if col == "NAME" and getattr(model, "expandable", False):
+            e: fs.Entry = index.data(ENTRY)
+            if e.is_dir:
+                on = os.path.normcase(e.path) in model.expanded
+                a = expander_rect(option.rect, e.depth)
+                p.save()
+                p.setRenderHint(QPainter.Antialiasing)
+                p.setPen(QPen(QColor(theme.TEXT_DIM), 1.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+                c = a.center()
+                if on:   # pointing down: open
+                    p.drawPolyline([QPointF(c.x() - 4, c.y() - 2), QPointF(c.x(), c.y() + 2),
+                                    QPointF(c.x() + 4, c.y() - 2)])
+                else:    # pointing right: closed
+                    p.drawPolyline([QPointF(c.x() - 2, c.y() - 4), QPointF(c.x() + 2, c.y()),
+                                    QPointF(c.x() - 2, c.y() + 4)])
+                p.restore()
+            opt = QStyleOptionViewItem(option)
+            opt.rect = option.rect.adjusted(e.depth * INDENT + 22, 0, 0, 0)
+            return super().paint(p, opt, index)
+        if col != "":
             return super().paint(p, option, index)
         e: fs.Entry = index.data(ENTRY)
         r = QRectF(option.rect)
@@ -353,6 +385,7 @@ class ListDelegate(QStyledItemDelegate):
 
 
 class ListView(DropMixin, QTreeView):
+    expand = Signal(object, object)   # entry, True (open) / False (close) / None (toggle)
     dropped = Signal(list, str, str)
     typed = Signal(str)
     star_clicked = Signal(object)
@@ -406,7 +439,29 @@ class ListView(DropMixin, QTreeView):
                 not e.modifiers():
             self.star_clicked.emit(idx.data(ENTRY))
             return
+        if idx.isValid() and e.button() == Qt.LeftButton and getattr(self.model(), "expandable", False) and \
+                self.model().columns()[idx.column()] == "NAME":
+            ent = idx.data(ENTRY)
+            if ent.is_dir and expander_rect(self.visualRect(idx), ent.depth).adjusted(-3, -6, 3, 6).contains(
+                    e.position()):
+                self.expand.emit(ent, None)
+                return
         super().mousePressEvent(e)
+
+    def keyPressEvent(self, e):
+        """Files: Right opens the folder in place, Left closes it (or goes to its folder's row)."""
+        if getattr(self.model(), "expandable", False) and e.key() in (Qt.Key_Right, Qt.Key_Left) and \
+                not e.modifiers():
+            idx = self.currentIndex()
+            if idx.isValid():
+                ent = idx.data(ENTRY)
+                if e.key() == Qt.Key_Right and ent.is_dir:
+                    self.expand.emit(ent, True)
+                    return
+                if e.key() == Qt.Key_Left:
+                    self.expand.emit(ent, False)
+                    return
+        super().keyPressEvent(e)
 
     def drawRow(self, painter, option, index):
         super().drawRow(painter, option, index)

@@ -623,6 +623,9 @@ class PreferencesDialog(QDialog):
         self.show_delete = QCheckBox("Show action to permanently delete")
         self.show_delete.setChecked(prefs["show_delete"])
         g.addWidget(self.show_delete, 2, 0, 1, 2)
+        self.expand_folders = QCheckBox("Expand folders in list view")
+        self.expand_folders.setChecked(prefs.get("expand_folders", False))
+        g.addWidget(self.expand_folders, 3, 0, 1, 2)
         g.setColumnStretch(0, 1)
         body.addWidget(general)
         perf = QGroupBox("PERFORMANCE")
@@ -654,6 +657,7 @@ class PreferencesDialog(QDialog):
     def answer(self) -> dict:
         return {"folders_first": self.folders_first.isChecked(), "click": self.click.currentData(),
                 "show_delete": self.show_delete.isChecked(), "search_subfolders": self.search_subfolders.isChecked(),
+                "expand_folders": self.expand_folders.isChecked(),
                 "thumbnails": self.combos["thumbnails"].currentData(), "counts": self.combos["counts"].currentData()}
 
 

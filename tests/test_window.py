@@ -364,7 +364,8 @@ def test_menus(win, home):
               "Show More Options"):
         assert t in texts
     w._background_menu()
-    assert [a.text() for a in menus[-1].actions() if a.text()][:3] == ["New Folder…", "Paste", "Select All"]
+    assert [a.text() for a in menus[-1].actions() if a.text()][:4] == ["New Folder…", "New Document", "Paste",
+                                                                        "Select All"]
     w._main_menu()
     assert any(a.text() == "Show Hidden Files" for a in menus[-1].actions())
 
@@ -648,3 +649,90 @@ def test_real_network_share(win, home, tmp_path):
     assert any(pl.kind == "share" for pl in w.sidebar.model().rows)
     w.forget_share(places.share_root(unc))
     assert not any(pl.kind == "share" for pl in w.sidebar.model().rows)
+
+
+def test_expand_folders_in_list_view(win, home):
+    from pr7e.main_window import load_prefs
+    w = win
+    w.set_prefs({**load_prefs(), "expand_folders": True})
+    w.set_view("list")
+    assert w.tab.model.expandable
+    music = str(home / "Music")
+    w.expand_folder(w.tab, next(e for e in w.tab.model.rows if e.path == music))
+    assert [(e.name, e.depth) for e in w.tab.model.rows] == [("Documents", 0), ("Music", 0), ("Paragon", 1),
+                                                             ("Pictures", 0)]
+    paragon = next(e for e in w.tab.model.rows if e.name == "Paragon")
+    w.expand_folder(w.tab, paragon, True)
+    assert [e.name for e in w.tab.model.rows if e.depth == 2] == ["ELSEWORLD"]
+    # Items inside work like any other: copy one out to Documents.
+    w.tab.select_paths([str(home / "Music" / "Paragon")])
+    assert w.status.text().startswith("“Paragon” selected")
+    # A change inside an open folder shows up.
+    (home / "Music" / "new song.mp3").write_bytes(b"x")
+    assert wait(lambda: "new song.mp3" in names(w))
+    # Left on an item inside goes to its folder's row; closing Music closes Paragon too.
+    w.expand_folder(w.tab, next(e for e in w.tab.model.rows if e.name == "new song.mp3"), False)
+    assert [e.name for e in w.tab.selected()] == ["Music"]
+    w.expand_folder(w.tab, next(e for e in w.tab.model.rows if e.name == "Music"), False)
+    assert names(w) == ["Documents", "Music", "Pictures"] and w.tab.expanded == set()
+    # The grid never shows rows from inside folders.
+    w.expand_folder(w.tab, next(e for e in w.tab.model.rows if e.name == "Music"), True)
+    w.set_view("grid")
+    assert names(w) == ["Documents", "Music", "Pictures"]
+
+
+def test_new_document_from_templates(win, home, monkeypatch):
+    from pr7e import places
+    w = win
+    tpl = home / "Templates"
+    (tpl / "Office").mkdir(parents=True)
+    (tpl / "Letter.txt").write_text("Dear ...")
+    (tpl / "Office" / "Budget.csv").write_text("a,b")
+    (tpl / "desktop.ini").write_text("x")
+    monkeypatch.setattr(places, "templates_dir", lambda: str(tpl))
+    assert [(n, len(k)) for n, _p, k in places.templates()] == [("Letter", 0), ("Office", 1)]
+    w.go(str(home / "Documents"))
+    menus = []
+    w.answers["context"] = menus.append
+    w._background_menu()
+    sub = next(a.menu() for a in menus[-1].actions() if a.text() == "New Document")
+    texts = [a.text() for a in sub.actions() if a.text()]
+    assert texts == ["Letter", "Office", "Empty Document", "Open Templates Folder"]
+    renamed = []
+    w.answers["name"] = lambda p: (renamed.append(p["initial"]), "To the label.txt")[1]
+    next(a for a in sub.actions() if a.text() == "Letter").trigger()
+    assert wait(lambda: (home / "Documents" / "To the label.txt").exists())
+    assert renamed == ["Letter.txt"] and (home / "Documents" / "To the label.txt").read_text() == "Dear ..."
+    w.answers["name"] = lambda p: None
+    w.new_document(None)
+    w.new_document(None)
+    QApplication.processEvents()
+    assert (home / "Documents" / "Untitled Document.txt").exists() and \
+        (home / "Documents" / "Untitled Document (2).txt").exists()
+    w.undo()
+    assert not (home / "Documents" / "Untitled Document (2).txt").exists()
+
+
+def test_set_as_background(win, home, monkeypatch):
+    from pr7e import places
+    w = win
+    (home / "Pictures" / "dusk.jpg").write_bytes(b"jpg")
+    set_to = []
+    monkeypatch.setattr(places, "set_wallpaper", lambda p, persist=True: set_to.append(p) or True)
+    w.go(str(home / "Pictures"))
+    w.tab.select_paths([str(home / "Pictures" / "dusk.jpg")])
+    menus = []
+    w.answers["context"] = menus.append
+    w._item_menu(w.tab.selected())
+    next(a for a in menus[-1].actions() if a.text() == "Set as Background…").trigger()
+    assert set_to == [str(home / "Pictures" / "dusk.jpg")]
+
+
+@pytest.mark.skipif(sys.platform != "win32" or not os.environ.get("CI"), reason="Windows' wallpaper call: CI only")
+def test_real_wallpaper_call(qapp, tmp_path):
+    from PySide6.QtGui import QColor, QImage
+    from pr7e import places
+    img = QImage(64, 64, QImage.Format_RGB32)
+    img.fill(QColor("#DE0639"))
+    img.save(str(tmp_path / "w.bmp"))
+    assert places.set_wallpaper(str(tmp_path / "w.bmp"), persist=False)
