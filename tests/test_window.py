@@ -146,7 +146,7 @@ def test_copy_paste_between_tabs_and_undo(win, home):
     w.tab.select_paths([str(home / "Documents" / "notes.txt")])
     w.copy()
     md = QGuiApplication.clipboard().mimeData()
-    assert [u.toLocalFile() for u in md.urls()] == [str(home / "Documents" / "notes.txt")]
+    assert [os.path.normpath(u.toLocalFile()) for u in md.urls()] == [str(home / "Documents" / "notes.txt")]
     assert bytes(md.data("x-special/gnome-copied-files")).startswith(b"copy\n")
     w.new_tab(str(home / "Pictures"))
     w.paste()

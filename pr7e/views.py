@@ -21,6 +21,11 @@ ENTRY = Qt.UserRole
 THUMB = Qt.UserRole + 1
 
 
+def local_paths(urls) -> list[str]:
+    """Files from a drop or the clipboard, as Windows writes paths (Qt gives "C:/x/y": normpath makes "C:\\x\\y")."""
+    return [os.path.normpath(u.toLocalFile()) for u in urls if u.isLocalFile()]
+
+
 def selected_text() -> QColor:
     """Text on the family selection band: white on OBSIDIAN, ink on AURORA (white on light pink can't be read)."""
     return QColor("#FFFFFF") if theme.FINISH == "obsidian" else QColor(theme.TEXT)
@@ -186,7 +191,7 @@ class DropMixin:
             e.ignore()
 
     def dropEvent(self, e):
-        paths = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
+        paths = local_paths(e.mimeData().urls())
         if not paths or not self.can_drop:
             e.ignore()
             return
@@ -544,7 +549,7 @@ class Sidebar(QListView):
         self.drop_row = -1
         self.viewport().update()
         pl = self.place_at(e.position().toPoint())
-        paths = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
+        paths = local_paths(e.mimeData().urls())
         if pl is None or not paths:
             e.ignore()
             return

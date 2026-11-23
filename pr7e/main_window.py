@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWind
                                QVBoxLayout, QWidget)
 
 from . import fs, ops, places, settings, system, theme, trash
-from .views import (EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
+from .views import (local_paths, EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
                     SearchFilters, Sidebar, TabStrip, TrashBar)
 from .widgets import Header
 from .workers import Asker, JobRunner, Loader, Search
@@ -460,7 +460,7 @@ class MainWindow(QMainWindow):
         if not text:
             return
         if text.lower().startswith("file:"):
-            text = QUrl(text).toLocalFile()
+            text = os.path.normpath(QUrl(text).toLocalFile())
         if os.path.isfile(text):
             self.go(os.path.dirname(text))
             self.tab.select_paths([text])
@@ -768,7 +768,7 @@ class MainWindow(QMainWindow):
         md = QGuiApplication.clipboard().mimeData()
         if md is None or not md.hasUrls():
             return [], False
-        paths = [u.toLocalFile() for u in md.urls() if u.isLocalFile()]
+        paths = local_paths(md.urls())
         cut = False
         if md.hasFormat(GNOME_COPIED):
             cut = bytes(md.data(GNOME_COPIED)).startswith(b"cut")
