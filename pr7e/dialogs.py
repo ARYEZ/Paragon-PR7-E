@@ -38,10 +38,12 @@ class NameDialog(QDialog):
     extension), Files' reason when it can't be used, and Rename / Create."""
 
     def __init__(self, title: str, label: str, button: str, folder: str, initial: str = "", is_dir: bool = False,
-                 current: str = "", parent=None):
+                 current: str = "", parent=None, taken: set | None = None):
+        """`taken`: the names already there, for a server folder (folder "" then: nothing is looked up on disk)."""
         super().__init__(parent)
         self.setWindowTitle(title)
         self.folder, self.is_dir, self.current = folder, is_dir, current
+        self.taken = taken
         self.resize(520, 0)
         body = _shell(self, title.upper())
         body.addWidget(_field(label))
@@ -64,7 +66,12 @@ class NameDialog(QDialog):
 
     def _check(self):
         name = self.edit.text()
-        problem = fs.name_problem(name, self.folder, self.is_dir, self.current)
+        if self.taken is not None:
+            problem = fs.name_problem(name, os.path.join(os.sep, "\0nowhere"), self.is_dir, self.current)
+            if not problem and name in self.taken:
+                problem = f"A {'folder' if self.is_dir else 'file'} with that name already exists."
+        else:
+            problem = fs.name_problem(name, self.folder, self.is_dir, self.current)
         self.problem.setText(problem)
         self.ok.setEnabled(bool(name.strip()) and not problem and name != self.current)
 
@@ -632,3 +639,52 @@ class PreferencesDialog(QDialog):
         return {"folders_first": self.folders_first.isChecked(), "click": self.click.currentData(),
                 "show_delete": self.show_delete.isChecked(), "search_subfolders": self.search_subfolders.isChecked(),
                 "thumbnails": self.combos["thumbnails"].currentData(), "counts": self.combos["counts"].currentData()}
+
+
+class LoginDialog(QDialog):
+    """Files' "Authentication Required": registered user (name, password) or, for FTP, anonymous; remember the
+    password (Windows Credential Manager) or not."""
+
+    def __init__(self, host: str, user: str, protocol: str, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QRadioButton
+        self.setWindowTitle("Authentication Required")
+        self.resize(500, 0)
+        body = _shell(self, "CONNECT TO SERVER")
+        t = QLabel(f"Password required for \u201c{host}\u201d")
+        t.setProperty("role", "heading")
+        body.addWidget(t)
+        row = QHBoxLayout()
+        self.anon = QRadioButton("Connect anonymously")
+        self.registered = QRadioButton("Registered user")
+        self.registered.setChecked(True)
+        row.addWidget(self.anon)
+        row.addWidget(self.registered)
+        row.addStretch(1)
+        self.anon.setVisible(protocol == "ftp")
+        self.registered.setVisible(protocol == "ftp")
+        body.addLayout(row)
+        g = QGridLayout()
+        self.user = QLineEdit(user)
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.Password)
+        g.addWidget(_field("Username"), 0, 0)
+        g.addWidget(self.user, 0, 1)
+        g.addWidget(_field("Password"), 1, 0)
+        g.addWidget(self.password, 1, 1)
+        body.addLayout(g)
+        self.remember = QCheckBox("Remember password (in Windows Credential Manager)")
+        body.addWidget(self.remember)
+        bb = QDialogButtonBox(QDialogButtonBox.Cancel)
+        ok = bb.addButton("Connect", QDialogButtonBox.AcceptRole)
+        ok.setDefault(True)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        body.addWidget(bb)
+        self.anon.toggled.connect(lambda on: [w.setEnabled(not on) for w in (self.user, self.password,
+                                                                              self.remember)])
+        (self.password if user else self.user).setFocus()
+
+    def answer(self) -> dict:
+        return {"anonymous": self.anon.isChecked(), "user": self.user.text().strip(),
+                "password": self.password.text(), "remember": self.remember.isChecked()}

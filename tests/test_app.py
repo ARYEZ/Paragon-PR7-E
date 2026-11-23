@@ -31,3 +31,13 @@ def test_shell_command_line():
     assert shell.command("%V").endswith('--explorer "%V"')
     assert set(shell.KEYS) == {r"Software\Classes\Directory\shell\PR7E", r"Software\Classes\Drive\shell\PR7E",
                                r"Software\Classes\Directory\Background\shell\PR7E"}
+
+
+def test_check_connects(server, tmp_path):
+    out = tmp_path / "out.json"
+    from pr7e import app
+    # parse_quick takes the password from the URL as written; spaces are fine there.
+    url = server.address.replace("paragon@", f"paragon:{server.password}@")
+    assert app.check(url, str(out)) == 0
+    result = json.loads(out.read_text())
+    assert result["names"] == ["index.html", "music"] and result["encrypted"] is (server.kind != "ftp")

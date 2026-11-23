@@ -40,6 +40,13 @@ Linux for tests. The owner writes Python; explain the why of changes.
 - `pr7e/rename.py` (no Qt): Files' batch rename (`from_template`, `find_replace`, `check` marks problems,
   `BatchRenameJob` renames through temporary names so swaps work). Preferences live in settings as `pref_*`
   (`main_window.PREFS` / `load_prefs`); "local" means not `places.is_remote` (UNC or DRIVE_REMOTE).
+- `pr7e/remote.py` is PR7-F's engine, copied (keep them in step); `pr7e/servers.py` (no Qt): server folders are
+  locations "sftp://user@host:22/path" (`split` / `join` / `key_for`); `CONNECTED` servers each keep one session
+  under a lock (`Server.call` reconnects once); jobs (TransferJob up/down, DeleteJob, RenameJob, NewFolderJob,
+  OpenJob) open their own sessions. Passwords only in keyring ("Paragon PR7-E"; PR7E_MEMORY_KEYRING in tests);
+  known_hosts in PR7E_DATA. The window lists server folders with `_background` (worker thread; inline when
+  `sync_jobs`), model mode "remote" (no stars, thumbnails, counts or search); server items travel on the clipboard /
+  in drags as REMOTE_MIME. Tests run against tests/servers.py (PR7-F's real FTP / FTPS / SFTP servers).
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list
@@ -48,7 +55,8 @@ Linux for tests. The owner writes Python; explain the why of changes.
   goes through `_ask(kind, payload)`; tests set `window.answers[kind]` and `window.sync_jobs = True`. File keys
   (Delete, Ctrl+C, F2, Return...) are scoped to the views (`scope="files"`) so text fields keep them.
 - `app.py`: `--selftest FOLDER OUT.json` opens a window offscreen and writes what it lists (CI runs it on the
-  installed exe). Installer `installer/pr7e.iss` (Inno Setup 6, per user, AppId
+  installed exe); `--check URL OUT.json` connects and lists (CI runs it on the installed exe against real FTPS and
+  SFTP servers). Installer `installer/pr7e.iss` (Inno Setup 6, per user, AppId
   {6B8E2F14-3C5A-4D97-A1E0-7F29C4B85D36} permanent); CI installs it silently, runs `tools/verify_install.py
   installed` (CI installs with /MERGETASKS=defaultfolders), uninstalls, `... uninstalled`. The spec gives the .exe file details and no UPX; CI builds PyInstaller's
   bootloader from source and scans with Defender (PR7-F's false-positive fix).

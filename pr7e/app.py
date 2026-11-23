@@ -7,6 +7,8 @@
     PR7-E.exe --default-folders on|off   Use PR7-E for Folders: double-clicked folders and Win+E open PR7-E
     PR7-E.exe --unregister               take everything away again (the uninstaller)
     PR7-E.exe --version
+    PR7-E.exe --check URL OUT.json       connect to a server (FTP / FTPS / SFTP), list its top folder, write what was
+                                         found (CI checks the installed program with it)
     PR7-E.exe --selftest FOLDER OUT.json  open a window offscreen on FOLDER, write what it lists (CI checks the
                                          installed program with it; settings go to a temp folder)
 """
@@ -34,6 +36,22 @@ def folders_from(argv: list[str]) -> list[str]:
         elif os.path.isfile(a):
             out.append(os.path.dirname(os.path.abspath(a)))
     return out
+
+
+def check(url: str, out: str) -> int:
+    import json
+    from . import servers
+    result = {}
+    try:
+        site, path = servers.parse(url)
+        srv = servers.connect(site, hostkey=lambda *a: "once", cert=lambda *a: True)
+        result = {"encrypted": srv.session.encrypted, "names": sorted(e.name for e in srv.list("/"))}
+        servers.disconnect(srv.key)
+    except Exception as e:  # noqa: BLE001 - reported in the output
+        result = {"error": f"{type(e).__name__}: {e}"}
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(result, fh)
+    return 0 if "names" in result else 1
 
 
 def selftest(folder: str, out: str) -> int:
@@ -71,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
         from . import __version__
         print(__version__)
         return 0
+    if argv[:1] == ["--check"] and len(argv) == 3:
+        return check(argv[1], argv[2])
     if argv[:1] == ["--selftest"] and len(argv) == 3:
         return selftest(argv[1], argv[2])
     if argv[:1] and argv[0] in ("--register-menu", "--register", "--unregister-menu", "--unregister",

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+- **Connect to Server** (Other Locations): sftp://, ftp:// (TLS when the server has it), ftps://, ftpes://, or just
+  a host; recent servers; Files' login question (registered user or anonymous FTP; anonymous refused -> asks);
+  "Remember password" keeps it in Windows Credential Manager only. Host keys and untrusted certificates are asked
+  about, as Files does. PR7-F's engine.
+- Server folders browse like any folder (grid / list, path bar, back / forward, tabs, Ctrl+L with an address);
+  connected servers in the sidebar, eject to disconnect.
+- Open a file on a server: downloaded to PR7-E's temporary folder and opened with its app.
+- Copy / cut and paste, drag and drop, Download to…: between servers and folders both ways, with Files' Replace
+  question and the progress pie; a move within one server is a rename.
+- New folder, rename (with undo) and delete (for good, after asking: servers have no Trash) on servers.
+
 ## 0.3.0
 
 - **Rename several files at once** (Rename… / F2 with more than one selected): Files' "Rename N Files" with a

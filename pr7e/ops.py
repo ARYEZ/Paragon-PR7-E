@@ -117,9 +117,10 @@ class Job:
         if self._cancel.is_set():
             raise Cancelled
 
-    def decide(self, src: str, target: str):
-        """Files' question for a name that's taken. Returns "replace", "merge", "skip" or ("rename", name)."""
-        c = _conflict(src, target)
+    def decide(self, src: str, target: str, conflict: Conflict | None = None):
+        """Files' question for a name that's taken. Returns "replace", "merge", "skip" or ("rename", name).
+        `conflict` describes the two items when one is on a server (os.stat can't see it)."""
+        c = conflict or _conflict(src, target)
         if self._all is not None:
             if self._all == "replace" and c.merge:
                 return "merge"

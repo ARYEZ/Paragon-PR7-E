@@ -512,3 +512,61 @@ def test_preferences(win, home):
     idx = w.tab.model.index(w.tab.model.row_of(str(home / "Documents")), 0)
     w.tab.view.clicked.emit(idx)
     assert w.tab.location == str(home / "Documents")
+
+
+def test_connect_to_server(win, home, server, server_root):
+    from pr7e import servers
+    w = win
+    w.go("other:")
+    assert w.connectbar.isVisible()
+    asked = []
+    w.answers["login"] = lambda p: (asked.append(p), {"anonymous": False, "user": "paragon",
+                                                      "password": server.password, "remember": True})[1]
+    w.answers["hostkey"] = lambda p: "always"
+    w.answers["cert"] = lambda p: True
+    clashes = []
+    w.answers["conflict"] = lambda c: (clashes.append(c.target), ("replace", False))[1]
+    w.connectbar.address.setText(server.address.replace("paragon@", ""))
+    w.connectbar._go()
+    assert asked and asked[0]["host"] == "127.0.0.1"
+    loc = w.tab.location
+    assert servers.is_remote(loc) and sorted(names(w)) == ["index.html", "music"]
+    k = servers.split(loc)[0]
+    assert servers.saved_password(k) == server.password and servers.recent()[0] == k
+    assert any(pl.kind == "server" for pl in w.sidebar.model().rows)
+    assert w.headerbar.path.segments[0][0] == "server"
+    # Into a folder; download by copy and paste into a local tab.
+    w.go(servers.join(k, "/music"))
+    assert sorted(names(w)) == ["elseworld", "notes.txt"]
+    w.tab.select_paths([servers.join(k, "/music/elseworld")])
+    w.copy()
+    w.new_tab(str(home / "Documents"))
+    w.paste()
+    assert (home / "Documents" / "elseworld" / "01 Portal.flac").read_bytes() == \
+        (server_root / "music" / "elseworld" / "01 Portal.flac").read_bytes()
+    # Upload by dropping a local file on the server folder.
+    w.set_current_tab(0)
+    w.drop([str(home / "Documents" / "notes.txt")], w.tab.location)
+    assert clashes == ["/music/notes.txt"]                                    # Files' question came up
+    assert (server_root / "music" / "notes.txt").read_bytes() == b"notes"   # and the answer replaced it
+    # New folder, rename, delete on the server.
+    w.answers["name"] = lambda p: "Made"
+    w.new_folder()
+    assert (server_root / "music" / "Made").is_dir() and "Made" in names(w)
+    w.tab.select_paths([servers.join(k, "/music/Made")])
+    w.answers["name"] = lambda p: (p.get("taken") is not None and "Renamed")
+    w.rename()
+    assert (server_root / "music" / "Renamed").is_dir()
+    w.tab.select_paths([servers.join(k, "/music/Renamed")])
+    confirm = []
+    w.answers["confirm"] = lambda p: (confirm.append(p["text"]), True)[1]
+    w.trash_selected()        # servers have no Trash: deletes for good, after asking
+    assert not (server_root / "music" / "Renamed").exists() and confirm[0].startswith("Servers have no Trash")
+    # Open: downloaded, then opened.
+    w.tab.select_paths([servers.join(k, "/music/notes.txt")])
+    w.open_selected()
+    assert w.opened and open(w.opened[-1], "rb").read() == b"notes"
+    # Disconnect: the tab goes to Other Locations.
+    w.disconnect_server(k + "/")
+    assert w.tab.location == "other:" and k not in servers.CONNECTED
+    assert not any(pl.kind == "server" for pl in w.sidebar.model().rows)

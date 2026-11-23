@@ -68,6 +68,25 @@ def installed():
         got = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
         check(got.get("names") == ["Pictures", "notes.txt"] and got.get("fonts") is True,
               f"PR7-E.exe opens a folder ({got})", p)
+    # Connect to real servers with the installed program: TLS, paramiko and cryptography made it into the build.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
+    from servers import PASSWORD, USER, FTPServer, SFTPServerThread
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d) / "server"
+        (root / "music").mkdir(parents=True)
+        (root / "index.html").write_bytes(b"hi")
+        for name, start, scheme in (("FTP over TLS", lambda: FTPServer(str(root), True, d), "ftpes"),
+                                    ("SFTP", lambda: SFTPServerThread(str(root)), "sftp")):
+            srv = start()
+            try:
+                out = Path(d) / f"{scheme}.json"
+                subprocess.run([str(exe), "--check", f"{scheme}://{USER}:{PASSWORD}@127.0.0.1:{srv.port}", str(out)],
+                               timeout=120, check=False)
+                got = json.loads(out.read_text(encoding="utf-8")) if out.exists() else {}
+                check(got.get("names") == ["index.html", "music"] and got.get("encrypted") is True,
+                      f"PR7-E.exe connects over {name} ({got})", p)
+            finally:
+                srv.stop()
     return p
 
 

@@ -7,6 +7,8 @@ import re
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules
+
 root = Path(SPECPATH)
 version = re.search(r'__version__ = "(.+?)"', (root / "pr7e" / "__init__.py").read_text()).group(1)
 nums = tuple(int(x) for x in (version.split(".") + ["0", "0", "0"])[:4])
@@ -31,6 +33,8 @@ a = Analysis(
     [str(root / "tools" / "launcher.py")],
     pathex=[str(root)],
     datas=[(str(root / "pr7e" / "fonts"), "pr7e/fonts"), (str(root / "pr7e" / "icons"), "pr7e/icons")],
+    # keyring finds its backends (Windows Credential Manager) at run time; paramiko / cryptography for SFTP.
+    hiddenimports=collect_submodules("keyring.backends") + ["paramiko", "cryptography"],
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick",
               "PySide6.QtMultimedia", "PySide6.QtPdf", "PySide6.Qt3DCore"],
 )

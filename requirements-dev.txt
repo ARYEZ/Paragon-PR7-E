@@ -1,3 +1,5 @@
 pytest>=8
 pyinstaller>=6.6
 pillow>=10
+pyftpdlib>=2.0
+pyopenssl>=24

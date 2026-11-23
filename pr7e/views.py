@@ -21,6 +21,16 @@ ENTRY = Qt.UserRole
 THUMB = Qt.UserRole + 1
 
 
+REMOTE_MIME = "application/x-pr7e-remote"
+
+
+def dropped_paths(md) -> list[str]:
+    """What a drop carries: server addresses (from a PR7-E server folder) or local files (anywhere, Explorer too)."""
+    if md.hasFormat(REMOTE_MIME):
+        return [x for x in bytes(md.data(REMOTE_MIME)).decode("utf-8").split("\n")[1:] if x]
+    return local_paths(md.urls())
+
+
 def local_paths(urls) -> list[str]:
     """Files from a drop or the clipboard, as Windows writes paths (Qt gives "C:/x/y": normpath makes "C:\\x\\y")."""
     return [os.path.normpath(u.toLocalFile()) for u in urls if u.isLocalFile()]
@@ -40,7 +50,8 @@ class EntryModel(QAbstractTableModel):
                "recent": ["NAME", "LOCATION", "SIZE", "MODIFIED", ""],
                "starred": ["NAME", "LOCATION", "SIZE", "MODIFIED", ""],
                "trash": ["NAME", "ORIGINAL LOCATION", "SIZE", "DELETED"],
-               "other": ["NAME", "SPACE"]}
+               "other": ["NAME", "SPACE"],
+               "remote": ["NAME", "SIZE", "MODIFIED"]}       # a server folder: no stars there
 
     def __init__(self, loader, parent=None):
         super().__init__(parent)
@@ -143,7 +154,12 @@ class EntryModel(QAbstractTableModel):
     def mimeData(self, indexes):
         md = QMimeData()
         rows = sorted({i.row() for i in indexes})
-        md.setUrls([QUrl.fromLocalFile(self.rows[r].path) for r in rows])
+        paths = [self.rows[r].path for r in rows]
+        if paths and "://" in paths[0]:  # server items: their addresses (only PR7-E can drop them)
+            md.setData(REMOTE_MIME, ("copy\n" + "\n".join(paths)).encode("utf-8"))
+            md.setText("\n".join(paths))
+        else:
+            md.setUrls([QUrl.fromLocalFile(p) for p in paths])
         return md
 
 
@@ -181,19 +197,19 @@ class DropMixin:
         drag.exec(Qt.CopyAction | Qt.MoveAction | Qt.LinkAction, Qt.MoveAction)
 
     def dragEnterEvent(self, e):
-        if e.mimeData().hasUrls() and self.can_drop:
+        if (e.mimeData().hasUrls() or e.mimeData().hasFormat(REMOTE_MIME)) and self.can_drop:
             e.acceptProposedAction()
         else:
             e.ignore()
 
     def dragMoveEvent(self, e):
-        if e.mimeData().hasUrls() and self.can_drop:
+        if (e.mimeData().hasUrls() or e.mimeData().hasFormat(REMOTE_MIME)) and self.can_drop:
             e.acceptProposedAction()
         else:
             e.ignore()
 
     def dropEvent(self, e):
-        paths = local_paths(e.mimeData().urls())
+        paths = dropped_paths(e.mimeData())
         if not paths or not self.can_drop:
             e.ignore()
             return
@@ -532,11 +548,14 @@ class Sidebar(QListView):
         super().mouseReleaseEvent(e)
 
     def dragEnterEvent(self, e):
-        e.acceptProposedAction() if e.mimeData().hasUrls() else e.ignore()
+        md = e.mimeData()
+        e.acceptProposedAction() if md.hasUrls() or md.hasFormat(REMOTE_MIME) else e.ignore()
 
     def dragMoveEvent(self, e):
         pl = self.place_at(e.position().toPoint())
-        ok = e.mimeData().hasUrls() and pl is not None and (pl.path == "trash:" or os.path.isdir(pl.path))
+        md = e.mimeData()
+        ok = (md.hasUrls() or md.hasFormat(REMOTE_MIME)) and pl is not None and (
+            pl.path == "trash:" or "://" in pl.path or os.path.isdir(pl.path))
         row = self.indexAt(e.position().toPoint()).row() if ok else -1
         if row != self.drop_row:
             self.drop_row = row
@@ -551,7 +570,7 @@ class Sidebar(QListView):
         self.drop_row = -1
         self.viewport().update()
         pl = self.place_at(e.position().toPoint())
-        paths = local_paths(e.mimeData().urls())
+        paths = dropped_paths(e.mimeData())
         if pl is None or not paths:
             e.ignore()
             return
@@ -876,6 +895,53 @@ class SearchFilters(QWidget):
         p = QPainter(self)
         p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
         p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+
+
+class ConnectBar(QWidget):
+    """Other Locations' "Connect to Server": an address (sftp://, ftp://, ftps://, ftpes:// or just a host), the
+    recent servers, Connect."""
+
+    connect_to = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lab = QLabel("CONNECT TO SERVER")
+        lab.setProperty("role", "field")
+        lay.addWidget(lab)
+        self.address = QLineEdit()
+        self.address.setPlaceholderText("Enter server address\u2026  (sftp://user@host, ftp://host)")
+        self.address.returnPressed.connect(self._go)
+        lay.addWidget(self.address, 1)
+        self.recent_btn = QPushButton("Recent")
+        self.recent_menu = QMenu(self.recent_btn)
+        self.recent_btn.setMenu(self.recent_menu)
+        self.recent_menu.aboutToShow.connect(self._fill)
+        lay.addWidget(self.recent_btn)
+        go = QPushButton("Connect")
+        go.clicked.connect(self._go)
+        lay.addWidget(go)
+        self.hide()
+
+    def _fill(self):
+        from . import servers
+        self.recent_menu.clear()
+        items = servers.recent()
+        for k in items:
+            self.recent_menu.addAction(k, lambda k=k: (self.address.setText(k), self._go()))
+        if not items:
+            self.recent_menu.addAction("No recent servers").setEnabled(False)
+
+    def _go(self):
+        text = self.address.text().strip()
+        if text:
+            self.connect_to.emit(text)
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setPen(QPen(QColor(theme.PANEL_EDGE), 1))
+        p.drawLine(0, 0, self.width(), 0)
 
 
 class TrashBar(QWidget):
