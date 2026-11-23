@@ -46,7 +46,12 @@ Linux for tests. The owner writes Python; explain the why of changes.
   OpenJob) open their own sessions. Passwords only in keyring ("Paragon PR7-E"; PR7E_MEMORY_KEYRING in tests);
   known_hosts in PR7E_DATA. The window lists server folders with `_background` (worker thread; inline when
   `sync_jobs`), model mode "remote" (no stars, thumbnails, counts or search); server items travel on the clipboard /
-  in drags as REMOTE_MIME. Tests run against tests/servers.py (PR7-F's real FTP / FTPS / SFTP servers).
+  in drags as REMOTE_MIME. `servers.search` / `servers.tree_size` use `fs.search_filter` (the same rules as local
+  search); `RelayJob` copies server -> server through a temporary folder. Tests run against tests/servers.py (PR7-F's
+  real FTP / FTPS / SFTP servers).
+- Windows shares (`places.share_path` / `share_root` / `share_label` / `connect_share` = WNetAddConnection2W,
+  `shares()` in settings): UNC folders are plain local locations; the window's `open_share` asks to log in only when
+  Windows can't open the folder. CI opens \\localhost\C$ for real.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

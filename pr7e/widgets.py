@@ -211,6 +211,9 @@ def _icon_path(name: str) -> QPainterPath:
         p.addRoundedRect(QRectF(4, 13.5, 16, 7.5), 1.5, 1.5)
         p.addEllipse(QRectF(15.5, 6, 1.6, 1.6))
         p.addEllipse(QRectF(15.5, 16.5, 1.6, 1.6))
+    elif name == "share":          # a Windows network share: a folder on a network line
+        _folder(p, 0, -2.5)
+        p.moveTo(12, 17); p.lineTo(12, 21); p.moveTo(5, 21); p.lineTo(19, 21)
     elif name == "network":        # Other Locations
         p.addEllipse(QRectF(3.5, 3.5, 17, 17)); p.moveTo(3.5, 12); p.lineTo(20.5, 12)
         p.addEllipse(QRectF(8, 3.5, 8, 17))
@@ -284,7 +287,7 @@ def file_pixmap(kind: str, size: int = 18) -> QPixmap:
         fill = QColor(theme.LED_ORANGE)
         fill.setAlphaF(0.12)
         draw_icon(p, "folder", r, QColor(theme.LED_ORANGE), w * 1.05, fill)
-    elif kind in ("drive", "usb", "network", "trash", "server"):
+    elif kind in ("drive", "usb", "network", "trash", "server", "share"):
         draw_icon(p, kind, r, QColor(theme.ACCENT), w)
     elif kind in FILE_KINDS and kind not in ("text", "document") and size >= 32:
         fill = QColor(theme.TEXT_DIM)

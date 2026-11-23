@@ -51,7 +51,8 @@ class EntryModel(QAbstractTableModel):
                "starred": ["NAME", "LOCATION", "SIZE", "MODIFIED", ""],
                "trash": ["NAME", "ORIGINAL LOCATION", "SIZE", "DELETED"],
                "other": ["NAME", "SPACE"],
-               "remote": ["NAME", "SIZE", "MODIFIED"]}       # a server folder: no stars there
+               "remote": ["NAME", "SIZE", "MODIFIED"],       # a server folder: no stars there
+               "remote_search": ["NAME", "LOCATION", "SIZE", "MODIFIED"]}
 
     def __init__(self, loader, parent=None):
         super().__init__(parent)
@@ -911,7 +912,7 @@ class ConnectBar(QWidget):
         lab.setProperty("role", "field")
         lay.addWidget(lab)
         self.address = QLineEdit()
-        self.address.setPlaceholderText("Enter server address\u2026  (sftp://user@host, ftp://host)")
+        self.address.setPlaceholderText("Enter server address\u2026  (sftp://user@host, ftp://host, \\\\pc\\share)")
         self.address.returnPressed.connect(self._go)
         lay.addWidget(self.address, 1)
         self.recent_btn = QPushButton("Recent")

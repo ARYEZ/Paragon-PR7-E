@@ -218,9 +218,11 @@ class PropertiesDialog(QDialog):
     """Files' Properties: the icon and name, size (folders are counted in the background: "12 items, totalling
     4.2 GB"), type, parent folder, dates, and the drive's free space."""
 
-    def __init__(self, entries: list[fs.Entry], parent=None, thumb: QPixmap | None = None):
+    def __init__(self, entries: list[fs.Entry], parent=None, thumb: QPixmap | None = None, server=None):
+        """`server`: a servers.Server when the items are in one of its folders (counted there, no disk lookups)."""
         super().__init__(parent)
         self.entries = entries
+        self.server = server
         one = entries[0] if len(entries) == 1 else None
         self.setWindowTitle(f"{one.name} Properties" if one else "Properties")
         self.resize(560, 0)
@@ -240,13 +242,19 @@ class PropertiesDialog(QDialog):
         self.grid.setVerticalSpacing(8)
         self.rows = 0
         self.size = self._row("Size", "")
-        folder = os.path.dirname(entries[0].path)
+        folder = os.path.dirname(entries[0].path) if server is None else entries[0].path.rsplit("/", 1)[0]
         if one:
             self._row("Type", system.type_name(one.path, one.is_dir))
         else:
             self._row("Contents", fs.items_text(len(entries)))
         self._row("Parent folder", folder)
-        if one:
+        if server is not None:
+            if one and one.mtime:
+                self._row("Modified", fs.full_date(one.mtime))
+            if one and one.extra:
+                self._row("Permissions", one.extra)
+            self._row("Server", server.key)
+        elif one:
             try:
                 st = os.stat(one.path)
                 self._row("Modified", fs.full_date(st.st_mtime))
@@ -256,7 +264,7 @@ class PropertiesDialog(QDialog):
                     self._row("Created", fs.full_date(created))
             except OSError:
                 pass
-        d = places.drive_of(entries[0].path)
+        d = places.drive_of(entries[0].path) if server is None else None
         if d and d.total:
             self._row("Free space", f"{fs.human_size(d.free)} free of {fs.human_size(d.total)}")
         body.addLayout(self.grid)
@@ -291,7 +299,15 @@ class PropertiesDialog(QDialog):
         def progress(b, f, d):
             self._partial = (b, f, d)
         dirs = [e.path for e in self.entries if e.is_dir]
-        b, f, d = fs.tree_size(dirs, self._stop.is_set, progress)
+        if self.server is not None:
+            from . import servers
+            try:
+                b, f, d = servers.tree_size(self.server, [servers.split(p)[1] for p in dirs], self._stop.is_set,
+                                            progress)
+            except Exception:  # noqa: BLE001 - the server went away: what was counted
+                b, f, d = self._partial
+        else:
+            b, f, d = fs.tree_size(dirs, self._stop.is_set, progress)
         b += sum(e.size for e in self.entries if not e.is_dir)
         f += sum(1 for e in self.entries if not e.is_dir)
         self.counted = (b, f, d)

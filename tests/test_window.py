@@ -1,5 +1,6 @@
 """The real window, offscreen, on a temporary home folder: what each action does to the files."""
 import os
+import sys
 import time
 
 import pytest
@@ -570,3 +571,80 @@ def test_connect_to_server(win, home, server, server_root):
     w.disconnect_server(k + "/")
     assert w.tab.location == "other:" and k not in servers.CONNECTED
     assert not any(pl.kind == "server" for pl in w.sidebar.model().rows)
+
+
+def connected(w, server):
+    from pr7e import servers
+    w.answers["hostkey"] = lambda p: "always"
+    w.answers["cert"] = lambda p: True
+    w.connect_server(server.address.replace("paragon@", "paragon:" + server.password + "@"))
+    return servers.split(w.tab.location)[0]
+
+
+def test_server_search_properties_and_relay(win, home, server, server_root):
+    from pr7e import servers
+    w = win
+    k = connected(w, server)
+    (server_root / "backup").mkdir()
+    w.reload()
+    # Search runs on the server, with LOCATION and no star column.
+    w.start_search("portal")
+    w._run_search(sync=True)
+    QApplication.processEvents()
+    assert [(e.name, e.location) for e in w.tab.model.rows] == [("01 Portal.flac", "music/elseworld")]
+    assert w.tab.model.columns() == ["NAME", "LOCATION", "SIZE", "MODIFIED"]
+    w.open_location(w.tab.model.rows[0])
+    assert w.tab.location == servers.join(k, "/music/elseworld") and w.tab.search is None
+    assert [e.name for e in w.tab.selected()] == ["01 Portal.flac"]
+    # Properties: counted on the server.
+    w.go(servers.join(k, "/"))
+    w.tab.select_paths([servers.join(k, "/music")])
+    dlgs = []
+    w.answers["properties"] = dlgs.append
+    w.properties()
+    d = dlgs[0]
+    assert wait(lambda: d.counted is not None)
+    d._show_count()
+    assert d.size.text() == f"3 items, totalling {__import__('pr7e.fs', fromlist=['x']).human_size(300_012)}"
+    d.done(0)
+    # Copy and paste between two server folders: down and up again.
+    w.copy()
+    w.paste(servers.join(k, "/backup"))
+    assert (server_root / "backup" / "music" / "elseworld" / "01 Portal.flac").read_bytes() == \
+        (server_root / "music" / "elseworld" / "01 Portal.flac").read_bytes()
+
+
+def test_network_share_login(win, home, monkeypatch, clean_settings):
+    from pr7e import places
+    w = win
+    calls = []
+
+    def connect_share(unc, user, password, remember):
+        calls.append((unc, user, password, remember))
+        raise OSError(1326, "The user name or password is wrong.", unc)
+    monkeypatch.setattr(places, "connect_share", connect_share)
+    asked = []
+    w.answers["login"] = lambda p: (asked.append(p), {"user": "me", "password": "pw", "remember": True})[1]
+    w.go("other:")
+    w.connectbar.address.setText("smb://nas/music")
+    w.connectbar._go()
+    assert asked[0]["protocol"] == "smb" and asked[0]["host"] == "nas"
+    assert calls == [(r"\\nas\music", "me", "pw", True)]
+    assert w.messages and "The user name or password is wrong." in w.messages[-1][2]
+    assert places.shares() == []
+
+
+@pytest.mark.skipif(sys.platform != "win32" or not os.environ.get("CI"), reason="a real share: Windows CI")
+def test_real_network_share(win, home, tmp_path):
+    from pr7e import places
+    unc = "\\\\localhost\\" + str(tmp_path)[0] + "$" + str(tmp_path)[2:]
+    if not os.path.isdir(unc):
+        pytest.skip("administrative shares are off here")
+    (tmp_path / "on the share.txt").write_text("x")
+    w = win
+    w.connect_server(unc)
+    assert w.tab.location == unc and "on the share.txt" in names(w)
+    assert w.headerbar.path.segments[0][0] == "share"
+    assert any(pl.kind == "share" for pl in w.sidebar.model().rows)
+    w.forget_share(places.share_root(unc))
+    assert not any(pl.kind == "share" for pl in w.sidebar.model().rows)

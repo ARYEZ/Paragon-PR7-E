@@ -211,7 +211,8 @@ class Search(QObject):
         self.generation = 0
         self._stop = threading.Event()
 
-    def start(self, root, text, when, what, show_hidden, sync=False, recursive=True) -> int:
+    def start(self, root, text, when, what, show_hidden, sync=False, recursive=True, server=None) -> int:
+        """`server`: a servers.Server, for a search in one of its folders (`root` is then the path on it)."""
         self.stop()
         self.generation += 1
         gen, stop = self.generation, threading.Event()
@@ -221,7 +222,16 @@ class Search(QObject):
             batch = []
             import time
             last = time.monotonic()
-            for e in fs.search(root, text, when, what, show_hidden, stop.is_set, recursive=recursive):
+            if server is not None:
+                from . import servers
+                found = servers.search(server, root, text, when, what, show_hidden, stop.is_set, recursive)
+            else:
+                found = fs.search(root, text, when, what, show_hidden, stop.is_set, recursive=recursive)
+            try:
+                items = list(found) if sync else found
+            except Exception:  # noqa: BLE001 - a server that went away: no results
+                items = []
+            for e in items:
                 batch.append(e)
                 if time.monotonic() - last > 0.15 or len(batch) >= 300:
                     self.found.emit(gen, batch)

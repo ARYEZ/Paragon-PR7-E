@@ -100,6 +100,9 @@ class Tab(QWidget):
             path = servers.split(self.location)[1]
             name = posixpath.basename(path.rstrip("/"))
             return ("server", name) if name else ("server", srv.label if srv else self.location)
+        if self.location.startswith("\\\\") and \
+                os.path.normcase(places.share_root(self.location)) == os.path.normcase(self.location.rstrip("\\")):
+            return "share", places.share_label(self.location)
         if os.path.normcase(self.location) == os.path.normcase(places.home()):
             return "home", "Home"
         d = places.drive_of(self.location, self.window_.drives)
@@ -179,7 +182,7 @@ class MainWindow(QMainWindow):
         self.sidebar.activated_place.connect(self._place)
         self.sidebar.dropped.connect(self._sidebar_drop)
         self.sidebar.eject.connect(lambda pl: self.disconnect_server(pl.path) if pl.kind == "server" else
-                                   self._eject(pl.path))
+                                   self.forget_share(pl.path) if pl.kind == "share" else self._eject(pl.path))
         self.sidebar.customContextMenuRequested.connect(self._sidebar_menu)
         self.sidebar.setVisible(settings.get_bool("sidebar", True))
         body.addWidget(self.sidebar)
@@ -464,6 +467,10 @@ class MainWindow(QMainWindow):
         """Files' Connect to Server: ask for the password if it isn't remembered, connect on a worker thread
         (host key and certificate questions come to the GUI), then show the folder."""
         tab = tab or self.tab
+        unc = places.share_path(address)
+        if unc:
+            self.open_share(unc, tab)
+            return
         try:
             site, path = servers.parse(address)
         except remote.RemoteError as e:
@@ -517,6 +524,40 @@ class MainWindow(QMainWindow):
             self.go(servers.join(srv.key, path if path != "/" else srv.home), tab=tab)
         self._background(lambda: servers.connect(site, hostkey=asks_hostkey, cert=asks_cert), done)
 
+    def open_share(self, unc: str, tab: Tab | None = None) -> None:
+        """A Windows network share (\\\\server\\share): opened as it is when Windows already has access; else Files'
+        login question, then Windows' own connection (WNetAddConnection2W, as Map network drive)."""
+        tab = tab or self.tab
+
+        def opened():
+            places.add_share(unc)
+            self.fill_sidebar_all()
+            self.go(unc, tab=tab)
+        if os.path.isdir(unc):
+            opened()
+            return
+        got = self._ask("login", {"host": unc.lstrip("\\").split("\\")[0], "user": "", "protocol": "smb"})
+        if not got:
+            return
+        self.empty.show_state("share", "Connecting\u2026", unc)
+
+        def done(_r, error):
+            if error is None and os.path.isdir(unc):
+                opened()
+                return
+            self._empty_state()
+            reason = (error.strerror or str(error)) if isinstance(error, OSError) else str(error or "")
+            self._message("Unable to connect", f"PR7-E couldn\u2019t open \u201c{unc}\u201d.",
+                          [reason or "The share can\u2019t be found."])
+        self._background(lambda: places.connect_share(unc, got["user"], got["password"], got.get("remember", False)),
+                         done)
+
+    def forget_share(self, path: str) -> None:
+        """The sidebar's eject on a share: off the sidebar, and Windows' connection to it closed."""
+        places.remove_share(path)
+        places.disconnect_share(path)
+        self.fill_sidebar_all()
+
     def disconnect_server(self, k: str) -> None:
         """The sidebar's eject on a server: tabs showing it go to Other Locations."""
         servers.disconnect(k.rstrip("/"))
@@ -558,6 +599,8 @@ class MainWindow(QMainWindow):
         side = t.location
         if servers.is_remote(side):
             side = servers.split(side)[0] + "/"
+        elif side.startswith("\\\\"):
+            side = places.share_root(side)
         self.sidebar.select_path(side if t.search is None else "")
         for view in (t.grid, t.list):
             view.can_drop = t.location not in places.SPECIAL and t.search is None
@@ -566,6 +609,10 @@ class MainWindow(QMainWindow):
         self._selection(t)
 
     def _root_name(self, root: str) -> str:
+        if servers.is_remote(root):
+            name = posixpath.basename(servers.split(root)[1].rstrip("/"))
+            srv = servers.server_for(root)
+            return name or (srv.label if srv else root)
         if os.path.normcase(root) == os.path.normcase(places.home()):
             return "Home"
         return os.path.basename(os.path.normpath(root)) or root
@@ -585,7 +632,10 @@ class MainWindow(QMainWindow):
                 segs.append(("", part, servers.join(k, cur)))
             return segs
         home = places.home()
-        if fs.is_inside(loc, home):
+        if loc.startswith("\\\\"):
+            base = places.share_root(loc)
+            segs = [("share", places.share_label(base), base)]
+        elif fs.is_inside(loc, home):
             segs = [("home", "Home", home)]
             base = home
         else:
@@ -646,6 +696,9 @@ class MainWindow(QMainWindow):
         if servers.is_remote(text):
             self.go(text)
             return
+        if places.share_path(text) and not os.path.isdir(places.share_path(text)):
+            self.open_share(places.share_path(text))  # a share Windows can't open yet: log in
+            return
         if text.lower().startswith("file:"):
             text = os.path.normpath(QUrl(text).toLocalFile())
         if os.path.isfile(text):
@@ -678,8 +731,6 @@ class MainWindow(QMainWindow):
     def start_search(self, text: str = "") -> None:
         """Ctrl+F, the search key, or typing in a folder: search it and every folder in it."""
         t = self.tab
-        if servers.is_remote(t.location):
-            return  # searching servers: not yet
         if t.search is None:
             root = t.location if t.location not in places.SPECIAL else places.home()
             t.search = {"text": "", "when": "", "what": "", "root": root, "generation": 0, "done": True}
@@ -717,6 +768,15 @@ class MainWindow(QMainWindow):
             s["done"] = True
             # Nothing to look for: show the folder, as Files does.
             loc = s["root"]
+            if servers.is_remote(loc):
+                t.model.set_rows([], "remote")
+                srv = servers.server_for(loc)
+                self._background(lambda: srv.list(servers.split(loc)[1]) if srv else [],
+                                 lambda es, err: (t.model.set_rows(self._sorted(
+                                     [e for e in es or [] if self.show_hidden or not e.hidden]), "remote"),
+                                     self._chrome()) if t.search is not None and not t.search["text"] else None)
+                self._chrome()
+                return
             try:
                 entries = self._sorted(fs.list_dir(loc, self.show_hidden))
             except OSError:
@@ -725,10 +785,12 @@ class MainWindow(QMainWindow):
             self._chrome()
             self._tabbar()
             return
-        t.model.set_rows([], "search")
+        srv = servers.server_for(s["root"])
+        t.model.set_rows([], "remote_search" if srv else "search")
         s["done"] = False
-        s["generation"] = self.searcher.start(s["root"], s["text"], s["when"], s["what"], self.show_hidden,
-                                              sync=sync or self.sync_jobs, recursive=self.prefs["search_subfolders"])
+        s["generation"] = self.searcher.start(servers.split(s["root"])[1] if srv else s["root"], s["text"],
+                                              s["when"], s["what"], self.show_hidden, sync=sync or self.sync_jobs,
+                                              recursive=self.prefs["search_subfolders"], server=srv)
         self._chrome()
         self._tabbar()
 
@@ -737,7 +799,7 @@ class MainWindow(QMainWindow):
             if t.search is not None and t.search.get("generation") == gen:
                 t.model.append(batch)
                 for e in batch:
-                    if e.is_dir:
+                    if e.is_dir and not servers.is_remote(e.path):
                         self._count(e.path)
                 if t is self.tab:
                     self._empty_state()
@@ -788,8 +850,9 @@ class MainWindow(QMainWindow):
     def open_location(self, e: fs.Entry) -> None:
         """Search results, Recent, Starred: open the folder it's in, with it selected."""
         path = e.trash.original if e.trash else e.path
-        self.go(os.path.dirname(path))
+        self.go(parent_of(path))
         self.tab.select_paths([path])
+        self.tab.pending_select = [path]  # a server folder: once its listing arrives
 
     # ================================================================== the selection label
     def _selection(self, tab: Tab):
@@ -1031,9 +1094,8 @@ class MainWindow(QMainWindow):
                     job.changed.add(dest)
                     self.run(job)
                 return True
-            self._message("Not supported yet", "Copying from one server folder to another isn\u2019t supported "
-                          "yet.", ["Copy the items to a folder on this computer first."])
-            return False
+            self.run(servers.RelayJob(paths, dest, move=move))  # down to a temporary folder, then up
+            return True
         if src_remote or dest_remote:
             self.run(servers.TransferJob(paths, dest, move=move))
         else:
@@ -1224,9 +1286,18 @@ class MainWindow(QMainWindow):
         self.tab.view.selectAll()
 
     def properties(self, entries: list[fs.Entry] | None = None) -> None:
-        if servers.is_remote(self.tab.location):
-            return
         entries = entries or self.tab.selected()
+        if servers.is_remote(self.tab.location):
+            if not entries:
+                return
+            from .dialogs import PropertiesDialog
+            dlg = PropertiesDialog(entries, self, server=servers.server_for(entries[0].path))
+            if "properties" in self.answers:
+                self.answers["properties"](dlg)
+                return
+            dlg.setAttribute(Qt.WA_DeleteOnClose)
+            dlg.show()
+            return
         if not entries:
             loc = self.tab.location
             if loc in places.SPECIAL:
@@ -1564,6 +1635,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             r = m.addAction("Rename\u2026", self.rename)
             r.setEnabled(len(entries) == 1)
+            m.addAction(self.act["properties"])
             return self._popup(m, gpos)
         if folders and not files:
             m.addAction("Open", self.open_selected).setShortcut(QKeySequence("Return"))
@@ -1647,6 +1719,9 @@ class MainWindow(QMainWindow):
         if pl.kind == "server":
             m.addSeparator()
             m.addAction("Disconnect", lambda: self.disconnect_server(pl.path))
+        elif pl.kind == "share":
+            m.addSeparator()
+            m.addAction("Disconnect", lambda: self.forget_share(pl.path))
         elif pl.eject:
             m.addSeparator()
             m.addAction("Eject", lambda: self._eject(pl.path))

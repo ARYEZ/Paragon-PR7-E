@@ -143,14 +143,12 @@ def matches(name: str, words: list[str]) -> bool:
     return all(w in f for w in words)
 
 
-def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bool = False,
-           cancelled=lambda: False, now: float | None = None, recursive: bool = True):
-    """Files' search: everything under `root` whose name holds every word typed (any case, accents ignored),
-    narrowed by When (modified in the last N days) and What (a kind). Yields entries as they're found, with
-    LOCATION relative to `root`. Folders that can't be read are passed over."""
+def search_filter(text: str, when: str = "", what: str = "", now: float | None = None):
+    """Files' search rules as a test on an entry: every word typed in its name (any case, accents ignored),
+    modified within When, of the kind What. None when there's nothing to look for. (Server search uses it too.)"""
     words = [fold(w) for w in text.split()]
     if not words and not when and not what:
-        return
+        return None
     cutoff = 0.0
     if when in WHEN:
         now = now or time.time()
@@ -160,6 +158,19 @@ def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bo
         else:
             cutoff = now - WHEN[when] * 86400
     want = WHAT.get(what, "")
+
+    def ok(e: Entry) -> bool:
+        return matches(e.name, words) and not (cutoff and e.mtime < cutoff) and not (want and e.kind != want)
+    return ok
+
+
+def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bool = False,
+           cancelled=lambda: False, now: float | None = None, recursive: bool = True):
+    """Files' search: everything under `root` that passes `search_filter`. Yields entries as they're found, with
+    LOCATION relative to `root`. Folders that can't be read are passed over."""
+    ok = search_filter(text, when, what, now)
+    if ok is None:
+        return
     stack = [root]
     while stack:
         if cancelled():
@@ -174,14 +185,9 @@ def search(root: str, text: str, when: str = "", what: str = "", show_hidden: bo
         for e in sort_entries(entries):
             if recursive and e.is_dir and not os.path.islink(e.path):
                 stack.append(e.path)
-            if not matches(e.name, words):
-                continue
-            if cutoff and e.mtime < cutoff:
-                continue
-            if want and e.kind != want:
-                continue
-            e.location = rel or os.path.basename(os.path.normpath(root)) or root
-            yield e
+            if ok(e):
+                e.location = rel or os.path.basename(os.path.normpath(root)) or root
+                yield e
 
 
 # --------------------------------------------------------------------------- Files' wording

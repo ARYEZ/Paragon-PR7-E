@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+
+- **Windows network shares**: type \\\\pc\\share (or Files' smb://pc/share) in Connect to Server or Ctrl+L. A share
+  that needs a login asks for it and connects the way Map network drive does (Remember keeps the password in
+  Windows Credential Manager). Shares you open are listed in the sidebar; eject takes them off and disconnects.
+  They're ordinary Windows folders: copy, Trash (or delete when the share has none), search, thumbnails per the
+  preference.
+- **Search in server folders**, with When and What, on its own connection.
+- **Properties for server items**: size (folders counted on the server), modified, permissions.
+- **Copy between server folders** and between servers (down to a temporary folder, then up; Files' question on the
+  way up); moving between servers deletes the originals after.
+- Fixed: uploading to a server didn't refresh the folder shown.
+
 ## 0.4.0
 
 - **Connect to Server** (Other Locations): sftp://, ftp:// (TLS when the server has it), ftps://, ftpes://, or just

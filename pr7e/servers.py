@@ -165,7 +165,7 @@ class Server:
             if e.name in (".", ".."):
                 continue
             out.append(fs.Entry(e.name, join(self.key, remote.join(path, e.name)), e.is_dir,
-                                -1 if e.is_dir else e.size, e.mtime, e.name.startswith(".")))
+                                -1 if e.is_dir else e.size, e.mtime, e.name.startswith("."), extra=e.perms))
         return out
 
     def close(self):
@@ -179,6 +179,80 @@ class Server:
 
 
 CONNECTED: dict[str, Server] = {}
+
+
+# --------------------------------------------------------------------------- searching and counting on servers
+def search(srv: Server, root: str, text: str, when: str = "", what: str = "", show_hidden: bool = False,
+           cancelled=lambda: False, recursive: bool = True):
+    """Files' search in a server folder and the folders in it, on a connection of its own; the same rules as on
+    this computer (fs.search_filter). Yields entries with LOCATION relative to `root`."""
+    ok = fs.search_filter(text, when, what)
+    if ok is None:
+        return
+    sess = srv.new_session()
+    try:
+        stack = [root]
+        while stack:
+            if cancelled():
+                return
+            folder = stack.pop()
+            try:
+                listing = sess.list(folder)
+            except remote.RemoteError:
+                continue
+            rel = posixpath.relpath(folder, root) if folder != root else ""
+            for e in sorted(listing, key=lambda x: fs.natural_key(x.name)):
+                if e.name in (".", "..") or (e.name.startswith(".") and not show_hidden):
+                    continue
+                path = remote.join(folder, e.name)
+                if recursive and e.is_dir and not e.is_link:
+                    stack.append(path)
+                ent = fs.Entry(e.name, join(srv.key, path), e.is_dir, -1 if e.is_dir else e.size, e.mtime,
+                               extra=e.perms)
+                if ok(ent):
+                    ent.location = rel or posixpath.basename(root.rstrip("/")) or srv.label
+                    yield ent
+    finally:
+        sess.close()
+
+
+def tree_size(srv: Server, paths: list[str], cancelled=lambda: False, progress=None) -> tuple[int, int, int]:
+    """(bytes, files, folders) under server paths, for Properties (a connection of its own)."""
+    total = files = folders = 0
+    sess = srv.new_session()
+    try:
+        stack = []
+        for p in paths:
+            folder, name = posixpath.split(p.rstrip("/"))
+            e = next((x for x in sess.list(folder or "/") if x.name == name), None)
+            if e is None:
+                continue
+            if e.is_dir:
+                stack.append(p)
+                folders += 1
+            else:
+                files += 1
+                total += e.size
+        while stack and not cancelled():
+            folder = stack.pop()
+            try:
+                listing = sess.list(folder)
+            except remote.RemoteError:
+                continue
+            for e in listing:
+                if e.name in (".", ".."):
+                    continue
+                if e.is_dir and not e.is_link:
+                    folders += 1
+                    stack.append(remote.join(folder, e.name))
+                else:
+                    files += 1
+                    total += e.size
+            if progress:
+                progress(total, files, folders)
+    finally:
+        sess.close()
+    return total, files, folders
 
 
 def connect(site: remote.Site, hostkey=None, cert=None) -> Server:
@@ -241,6 +315,7 @@ class TransferJob(ops.Job):
                 self.total_bytes, self.total_items, _ = fs.tree_size(self.sources, lambda: self.cancelled)
                 self.state = "running"
                 folder = split(self.dest)[1]
+                self.changed.add(self.dest)  # the server folder shown refreshes
                 for s in self.sources:
                     self.check()
                     self._up(os.path.abspath(s), folder, os.path.basename(os.path.normpath(s)))
@@ -510,3 +585,61 @@ class OpenJob(ops.Job):
             raise OSError(0, str(e), self.name) from e
         finally:
             sess.close()
+
+
+class RelayJob(ops.Job):
+    """Copy (or move) between two server folders, on one server or two: FTP and SFTP have no server-side copy, so
+    the items come down to a temporary folder and go up again. Files' question is asked on the way up."""
+
+    def __init__(self, sources: list[str], dest: str, move: bool = False):
+        super().__init__()
+        self.sources, self.dest, self.move = sources, dest, move
+        self.kind = "move" if move else "copy"
+        name = posixpath.basename(split(sources[0])[1].rstrip("/"))
+        where = posixpath.basename(split(dest)[1].rstrip("/")) or (server_for(dest).label if server_for(dest)
+                                                                   else dest)
+        self.title = f"{'Moving' if move else 'Copying'} " + \
+            (ops._quote(name) if len(sources) == 1 else ops._files(len(sources))) + f" to {ops._quote(where)}"
+        self.steps: list[ops.Job] = []
+
+    def fraction(self) -> float:
+        if not self.steps:
+            return 0.0
+        return sum(s.fraction() for s in self.steps) / 2  # down, then up: each half the way
+
+    def detail(self) -> str:
+        step = self.steps[-1] if self.steps else None
+        if step is None:
+            return "Preparing\u2026"
+        return ("Downloading: " if len(self.steps) == 1 else "Uploading: ") + step.detail()
+
+    def cancel(self) -> None:
+        super().cancel()
+        for s in self.steps:
+            s.cancel()
+
+    def work(self):
+        tmp = tempfile.mkdtemp(prefix="pr7e-relay-")
+        try:
+            down = TransferJob(self.sources, tmp)
+            self.steps.append(down)
+            down.run()
+            self.errors += down.errors
+            if down.state != "done" or self.cancelled:
+                raise ops.Cancelled
+            items = [os.path.join(tmp, n) for n in sorted(os.listdir(tmp))]
+            up = TransferJob(items, self.dest)
+            up.ask = self.ask
+            self.steps.append(up)
+            up.run()
+            self.errors += up.errors
+            if up.state != "done":
+                raise ops.Cancelled
+            self.changed.add(self.dest)
+            if self.move and not self.errors:
+                d = DeleteJob(self.sources)
+                d.run()
+                self.errors += d.errors
+                self.changed |= d.changed
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

@@ -77,3 +77,20 @@ def test_drives():
 def test_known_folders():
     names = [label for label, _icon, _path in places.home_folders()]
     assert "Documents" in names
+
+
+def test_network_share_addresses(clean_settings):
+    assert places.share_path(r"\\nas\music\Paragon") == r"\\nas\music\Paragon"
+    assert places.share_path("smb://nas/music/Paragon") == r"\\nas\music\Paragon"
+    assert places.share_path("smb://me@nas/music") == r"\\nas\music"
+    assert places.share_path("//nas/music") == r"\\nas\music"
+    assert places.share_path(r"\\nas") is None and places.share_path("sftp://x") is None
+    assert places.share_root(r"\\nas\music\a\b") == r"\\nas\music"
+    assert places.share_label(r"\\nas\music") == "music on nas"
+    assert places.is_remote(r"\\nas\music")
+    places.add_share(r"\\nas\music\Paragon")
+    places.add_share(r"\\NAS\Music")       # the same share: once
+    assert places.shares() == [{"path": r"\\NAS\Music", "name": "Music on NAS"}]
+    assert any(p.kind == "share" and p.eject for p in places.sidebar())
+    places.remove_share(r"\\nas\music")
+    assert places.shares() == []

@@ -156,6 +156,86 @@ def is_remote(path: str) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------- Windows network shares
+def share_path(address: str) -> str | None:
+    """"\\\\server\\share\\folder", "//server/share" or Files' "smb://server/share/folder" -> the UNC path
+    ("\\\\server\\share\\folder"), else None."""
+    a = address.strip()
+    if a.lower().startswith("smb://"):
+        a = a[6:]
+        if "@" in a.split("/", 1)[0]:
+            a = a.split("@", 1)[1]  # smb://user@server/share: the user is asked for when needed
+    elif a.startswith(("\\\\", "//")):
+        a = a[2:]
+    else:
+        return None
+    parts = [x for x in a.replace("\\", "/").split("/") if x]
+    if len(parts) < 2:
+        return None  # a share needs a server and a share name
+    return "\\\\" + "\\".join(parts)
+
+
+def share_root(unc: str) -> str:
+    """"\\\\server\\share\\a\\b" -> "\\\\server\\share"."""
+    parts = unc.lstrip("\\").split("\\")
+    return "\\\\" + "\\".join(parts[:2])
+
+
+def share_label(unc: str) -> str:
+    """Files' name for a share: "share on server"."""
+    parts = unc.lstrip("\\").split("\\")
+    return f"{parts[1]} on {parts[0]}" if len(parts) >= 2 else unc
+
+
+SHARE_ERRORS = {5: "Access is denied.", 53: "The server can\u2019t be found.", 67: "That share doesn\u2019t exist.",
+                86: "The password is wrong.", 1219: "You\u2019re already connected to this server as another user.",
+                1326: "The user name or password is wrong.", 1909: "That account is locked."}
+
+
+def connect_share(unc: str, user: str = "", password: str = "", remember: bool = False) -> None:
+    """Log in to a share as Windows' "Map network drive" does, without a drive letter (WNetAddConnection2W).
+    `remember` lets Windows keep the password in Credential Manager. Raises OSError with Windows' reason."""
+    if not WINDOWS:
+        raise OSError(0, "Network shares are a Windows feature.")
+    import ctypes
+    from ctypes import wintypes
+
+    class NETRESOURCEW(ctypes.Structure):
+        _fields_ = [("dwScope", wintypes.DWORD), ("dwType", wintypes.DWORD), ("dwDisplayType", wintypes.DWORD),
+                    ("dwUsage", wintypes.DWORD), ("lpLocalName", wintypes.LPWSTR), ("lpRemoteName", wintypes.LPWSTR),
+                    ("lpComment", wintypes.LPWSTR), ("lpProvider", wintypes.LPWSTR)]
+    nr = NETRESOURCEW(0, 1, 0, 0, None, share_root(unc), None, None)  # RESOURCETYPE_DISK
+    flags = 0x1000 if remember else 0                                  # CONNECT_CMD_SAVECRED
+    res = ctypes.windll.mpr.WNetAddConnection2W(ctypes.byref(nr), password or None, user or None, flags)
+    if res:
+        raise OSError(res, SHARE_ERRORS.get(res, ctypes.FormatError(res).strip()), unc)
+
+
+def disconnect_share(unc: str) -> None:
+    if WINDOWS:
+        import ctypes
+        ctypes.windll.mpr.WNetCancelConnection2W(share_root(unc), 0, False)
+
+
+def shares() -> list[dict]:
+    """The shares you've opened, for the sidebar: [{"path": "\\\\server\\share", "name": "share on server"}]."""
+    from . import settings
+    return [x for x in settings.get_list("shares") if isinstance(x, dict) and x.get("path")]
+
+
+def add_share(unc: str) -> None:
+    from . import settings
+    root = share_root(unc)
+    items = [x for x in shares() if x["path"].lower() != root.lower()]
+    settings.set("shares", items + [{"path": root, "name": share_label(root)}])
+
+
+def remove_share(unc: str) -> None:
+    from . import settings
+    root = share_root(unc)
+    settings.set("shares", [x for x in shares() if x["path"].lower() != root.lower()])
+
+
 def eject(root: str) -> bool:
     """Eject a USB drive or disc as Explorer's Eject does (the shell's Eject verb)."""
     if not WINDOWS:
@@ -343,5 +423,6 @@ def sidebar() -> list[Place]:
         out += [Place(b.get("name") or b["path"], "bookmark", b["path"], kind="bookmark") for b in bms]
     out.append(Place("", ""))
     out += [Place(d.label, "usb" if d.removable else "drive", d.root, d.removable, "drive") for d in drives()]
+    out += [Place(x.get("name") or share_label(x["path"]), "share", x["path"], True, "share") for x in shares()]
     out.append(Place("Other Locations", "network", "other:"))
     return out

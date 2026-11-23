@@ -98,3 +98,34 @@ def test_passwords_only_in_the_keyring(qapp, clean_settings):
     servers.add_recent("sftp://me@h:22")
     servers.add_recent("ftp://x:21")
     assert servers.recent() == ["ftp://x:21", "sftp://me@h:22"]
+
+
+def test_search_on_a_server(server, server_root):
+    srv, _ = connect(server)
+    (server_root / "music" / "elseworld" / "Elseworld notes.txt").write_bytes(b"x")
+    found = {e.name: e.location for e in servers.search(srv, "/", "elsew")}
+    assert found == {"elseworld": "music", "Elseworld notes.txt": "music/elseworld"}
+    assert [e.name for e in servers.search(srv, "/", "", what="Music")] == ["01 Portal.flac"]
+    assert [e.name for e in servers.search(srv, "/music", "notes", recursive=False)] == ["notes.txt"]
+    assert list(servers.search(srv, "/", "")) == []
+
+
+def test_sizes_for_properties(server, server_root):
+    srv, _ = connect(server)
+    b, f, d = servers.tree_size(srv, ["/music"])
+    assert (b, f, d) == (300_000 + len(b"server notes"), 2, 2)
+
+
+def test_copy_between_server_folders(server, server_root):
+    srv, _ = connect(server)
+    (server_root / "backup").mkdir()
+    job = servers.RelayJob([srv.key + "/music/elseworld", srv.key + "/index.html"], srv.key + "/backup")
+    job.run()
+    assert job.state == "done" and not job.errors, job.errors
+    assert (server_root / "backup" / "elseworld" / "01 Portal.flac").read_bytes() == \
+        (server_root / "music" / "elseworld" / "01 Portal.flac").read_bytes()
+    assert (server_root / "backup" / "index.html").read_bytes() == b"<html>hi</html>"
+    assert job.fraction() == 1.0
+    mv = servers.RelayJob([srv.key + "/backup/index.html"], srv.key + "/music", move=True)
+    mv.run()
+    assert (server_root / "music" / "index.html").exists() and not (server_root / "backup" / "index.html").exists()
