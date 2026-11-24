@@ -114,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     from .main_window import MainWindow
     w = MainWindow(folders_from(argv) or None)
     w.show()
+    from . import update_ui
+    update_ui.start(w)  # a check for updates, once a day
     return app.exec()
 
 

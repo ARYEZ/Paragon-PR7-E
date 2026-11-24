@@ -88,6 +88,8 @@ Linux for tests. The owner writes Python; explain the why of changes.
   installed` (CI installs with /MERGETASKS=defaultfolders), uninstalls, `... uninstalled`. The spec gives the .exe file details and no UPX; CI builds PyInstaller's
   bootloader from source and scans with Defender (PR7-F's false-positive fix).
 
+- Updates: `pr7e/updates.py` (no Qt; GitHub's public releases/latest, User-Agent names only the app, installer asset `PR7-E-Setup-*.exe`, run with /SILENT /relaunch=1) and `update_ui.py` (once-a-day check from app.py, the menu's Check for Updates, UpdateDialog; settings updates/auto|last|skip; `notify` for tests). The installer's [Code] Relaunch starts PR7-E again only for /relaunch=1. Same files in every family app (PR7-W's update_ui imports PyQt6): keep them in step. `family.py`: the other family apps by their permanent AppIds (uninstall InstallLocation).
+
 ## The look (family rules)
 
 - Theme is PR7-F's (OBSIDIAN + AURORA via `theme.set_finish`; widgets with their own style sheets have `restyle()`).

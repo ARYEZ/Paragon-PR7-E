@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- **Check for updates**: a few seconds after starting (at most once a day) PR7-E asks GitHub whether a newer release is out; if so, a note offers What's new, Install Now (downloads with progress, installs over this copy, and PR7-E reopens), Later or Skip This Version. "Main menu > Check for Updates" checks by hand. Only the app's name is sent.
+- **Family links**: the right-click menu has Edit in PR7-W (text files), Edit Tags in PR7-L (music and folders) and Open in PR7-Z (archives) when those apps are installed.
+
 ## 1.0.0
 
 PR7-E does everything planned from GNOME Files; this is its first permanent release.

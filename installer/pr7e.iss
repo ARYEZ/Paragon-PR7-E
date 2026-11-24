@@ -63,6 +63,15 @@ Filename: "{app}\PR7-E.exe"; Parameters: "--unregister-menu"; Flags: runhidden w
 ; a choice made in PR7-E.
 Filename: "{app}\PR7-E.exe"; Parameters: "--default-folders on"; Flags: runhidden waituntilterminated; Tasks: defaultfolders
 Filename: "{app}\PR7-E.exe"; Description: "{cm:LaunchProgram,Paragon PR7-E}"; Flags: nowait postinstall skipifsilent
+; Updates (Check for Updates runs this installer with /SILENT /relaunch=1): start PR7-E again when done.
+Filename: "{app}\PR7-E.exe"; Flags: nowait runasoriginaluser; Check: Relaunch
 
 [UninstallRun]
 Filename: "{app}\PR7-E.exe"; Parameters: "--unregister"; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterMenu"
+
+[Code]
+// True only when the updater asked for it (/relaunch=1): normal and CI installs behave as before.
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;

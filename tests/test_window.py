@@ -996,3 +996,43 @@ def test_real_windows_folder_menu_open_with_and_hidden(tmp_path):
     system.set_hidden(str(f), False)
     assert not system.is_hidden_attr(str(f))
     assert system.owner(str(f))
+
+
+def test_family_links(win, home, monkeypatch):
+    from pr7e import family
+    installed = {"PR7-W", "PR7-L", "PR7-Z"}
+    started = []
+    monkeypatch.setattr(family, "find", lambda app: f"C:\\{app}.exe" if app in installed else None)
+    monkeypatch.setattr(family, "launch", lambda app, args: started.append((app, list(args))) or True)
+    (home / "Music" / "song.mp3").write_bytes(b"x")
+    (home / "Music" / "set.7z").write_bytes(b"x")
+    w = win
+    menus = []
+    w.answers["context"] = menus.append
+
+    def menu_for(*paths):
+        w.tab.select_paths([str(p) for p in paths])
+        w._item_menu(w.tab.selected())
+        return {a.text(): a for a in menus[-1].actions() if a.text()}
+    w.go(str(home / "Documents"))
+    items = menu_for(home / "Documents" / "notes.txt")
+    items["Edit in PR7-W"].trigger()
+    assert started[-1] == ("PR7-W", [str(home / "Documents" / "notes.txt")])
+    assert "Edit Tags in PR7-L" not in items and "Open in PR7-Z" not in items
+    w.go(str(home / "Music"))
+    items = menu_for(home / "Music" / "song.mp3", home / "Music" / "Paragon")
+    items["Edit Tags in PR7-L"].trigger()
+    assert started[-1] == ("PR7-L", [str(home / "Music" / "song.mp3"), str(home / "Music" / "Paragon")])
+    items = menu_for(home / "Music" / "set.7z")
+    items["Open in PR7-Z"].trigger()
+    assert started[-1] == ("PR7-Z", [str(home / "Music" / "set.7z")])
+    installed.clear()                                  # not installed: not offered
+    items = menu_for(home / "Music" / "song.mp3")
+    assert "Edit Tags in PR7-L" not in items
+
+
+def test_family_lookup_is_windows_only():
+    from pr7e import family
+    if sys.platform != "win32":
+        assert family.find("PR7-W") is None and not family.pr7e_for_folders()
+    assert family.find("not-a-family-app") is None

@@ -19,7 +19,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMenu, QStackedWidget,
                                QVBoxLayout, QWidget)
 
-from . import archive, fs, ops, places, remote, rename, servers, settings, system, theme, trash, winshell
+from . import archive, family, fs, ops, places, remote, rename, servers, settings, system, theme, trash, winshell
 from .views import (local_paths, ConnectBar, EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
                     SearchFilters, Sidebar, TabStrip, TrashBar)
 from .widgets import Header
@@ -1449,6 +1449,24 @@ class MainWindow(QMainWindow):
                 return
         self.run(archive.ExtractJob(path, dest))
 
+    def _family_items(self, m: QMenu, files: list[fs.Entry], folders: list[fs.Entry]) -> None:
+        """The family's own apps, when they're installed: text in PR7-W, music (and folders of it) in PR7-L,
+        archives in PR7-Z."""
+        texts = [e.path for e in files if e.kind in ("text", "file")]
+        music = [e.path for e in files if e.kind == "audio"] + [e.path for e in folders]
+        archives = [e.path for e in files if archive.can_extract(e.name)]
+        items = []
+        if texts and len(texts) == len(files) and not folders and family.find("PR7-W"):
+            items.append(("Edit in PR7-W", lambda: [family.launch("PR7-W", [p]) for p in texts]))
+        if music and len(music) == len(files) + len(folders) and family.find("PR7-L"):
+            items.append(("Edit Tags in PR7-L", lambda: family.launch("PR7-L", music)))
+        if len(archives) == 1 and len(files) == 1 and not folders and family.find("PR7-Z"):
+            items.append(("Open in PR7-Z", lambda: family.launch("PR7-Z", archives)))
+        if items:
+            m.addSeparator()
+            for text, fn in items:
+                m.addAction(text, fn)
+
     def _open_with(self, path: str, handler: str) -> None:
         if not winshell.open_with_app(path, handler):
             self.open_file(path)
@@ -1863,6 +1881,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self.act["preferences"])
         m.addAction(self.act["shortcuts"])
+        m.addAction("Check for Updates\u2026", self.check_updates)
         m.addAction("About PR7-E", self._about)
         k = self.headerbar.keys["menu"]
         if "menu" in self.answers:
@@ -1937,6 +1956,7 @@ class MainWindow(QMainWindow):
                     for name, handler in apps:
                         sub.addAction(name, lambda h=handler, p=files[0].path: self._open_with(p, h))
                 m.addAction("Open With Other Application\u2026", lambda: self._open_with_chooser(files[0].path))
+        self._family_items(m, files, folders)
         if t.search is not None or t.location in ("recent:", "starred:"):
             if len(entries) == 1:
                 m.addAction("Open Item Location", lambda: self.open_location(entries[0]))
@@ -2143,6 +2163,10 @@ class MainWindow(QMainWindow):
     def _shortcuts(self):
         from .dialogs import ShortcutsDialog
         ShortcutsDialog(self).exec()
+
+    def check_updates(self):
+        from . import update_ui
+        update_ui.check(self)
 
     def _about(self):
         from .dialogs import AboutDialog
