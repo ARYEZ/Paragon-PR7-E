@@ -839,3 +839,44 @@ def test_real_network_calls():
     hidden = [n for n, _r in winshell.computer_shares(r"\\localhost", hidden=True)]
     assert any(n.upper() in ("C$", "ADMIN$") for n in hidden), hidden
     assert all(not n.endswith("$") for n, _r in places.computer_shares(r"\\localhost"))
+
+
+def test_side_button_reported_as_left_click(win, home, monkeypatch):
+    """Qt 6 on Windows can report the mouse's back button as the LEFT button: Windows is asked which is down."""
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QMouseEvent
+    from pr7e import main_window
+    w = win
+    w.go(str(home / "Music"))
+    w.go(str(home / "Music" / "Paragon"))
+    down = set()
+    monkeypatch.setattr(main_window, "ASK_WINDOWS", True)
+    monkeypatch.setattr(main_window, "_key_down", lambda vk: vk in down)
+    view = w.tab.view.viewport()
+    rect = w.tab.view.visualRect(w.tab.model.index(0, 0))
+    pos = QPointF(rect.center())
+
+    def send(kind, button, buttons):
+        QApplication.sendEvent(view, QMouseEvent(kind, pos, pos, button, buttons, Qt.NoModifier))
+    T = QMouseEvent.Type
+    down.add(main_window.VK_XBUTTON1)                    # Windows: back down, left up
+    send(T.MouseButtonPress, Qt.LeftButton, Qt.LeftButton)  # ...but Qt says "left"
+    send(T.MouseMove, Qt.NoButton, Qt.LeftButton)
+    down.clear()
+    send(T.MouseButtonRelease, Qt.LeftButton, Qt.NoButton)
+    assert w.tab.location == str(home / "Music")
+    assert w.tab.selected() == [] or [e.name for e in w.tab.selected()] == ["Paragon"]  # (going up selects it)
+    # Forward the same way.
+    down.add(main_window.VK_XBUTTON2)
+    send(T.MouseButtonPress, Qt.LeftButton, Qt.LeftButton)
+    down.clear()
+    send(T.MouseButtonRelease, Qt.LeftButton, Qt.NoButton)
+    assert w.tab.location == str(home / "Music" / "Paragon")
+    # A real left click (left down) still selects, and goes nowhere.
+    w.tab.view.clearSelection()
+    down.add(main_window.VK_LBUTTON)
+    send(T.MouseButtonPress, Qt.LeftButton, Qt.LeftButton)
+    down.clear()
+    send(T.MouseButtonRelease, Qt.LeftButton, Qt.NoButton)
+    assert w.tab.location == str(home / "Music" / "Paragon")
+    assert [e.name for e in w.tab.selected()] == ["ELSEWORLD"]

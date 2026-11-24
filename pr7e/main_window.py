@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import sys
 import struct
 import threading
 
@@ -39,6 +40,36 @@ def parent_of(loc: str) -> str:
         k, path = servers.split(loc)
         return servers.join(k, posixpath.dirname(path.rstrip("/")) or "/")
     return os.path.dirname(loc)
+
+
+VK_LBUTTON, VK_XBUTTON1, VK_XBUTTON2 = 0x01, 0x05, 0x06
+ASK_WINDOWS = sys.platform == "win32"   # tests turn it on elsewhere, with _key_down standing in for Windows
+
+
+def _key_down(vk: int) -> bool:
+    """Whether Windows says a mouse button is down for the message being handled (GetKeyState)."""
+    import ctypes
+    return bool(ctypes.windll.user32.GetKeyState(vk) & 0x8000)
+
+
+def side_button(reported):
+    """The mouse's back / forward button, or None. Qt 6 on Windows reads the mouse through Windows' pointer
+    messages, and with some mice it reports the side buttons as the LEFT button. So on Windows, Windows itself is
+    asked: left up and a side button down means it was really back (XBUTTON1) or forward (XBUTTON2). A real left
+    click always has the left button down, so it can't be mistaken."""
+    if reported in (Qt.BackButton, Qt.ForwardButton):
+        return reported
+    if ASK_WINDOWS:
+        try:
+            if not _key_down(VK_LBUTTON):
+                if _key_down(VK_XBUTTON1):
+                    return Qt.BackButton
+                if _key_down(VK_XBUTTON2):
+                    return Qt.ForwardButton
+        except Exception:  # noqa: BLE001 - no Windows: Qt's own report is all there is
+            return None
+    return None
+
 
 
 def _login_refused(error) -> bool:
@@ -139,6 +170,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self.answers: dict = {}                 # tests: kind -> function(payload) instead of a dialog
         self.shell_reg = None                   # tests: a stand-in registry for "Use PR7-E for Folders"
+        self._side_click = False                # a mouse back / forward click being swallowed
         self._bridge = _Bridge()
         self._bridge.done.connect(lambda box: box[0](*box[1]), Qt.QueuedConnection)
         self.asker = Asker(self._ask)
@@ -794,13 +826,20 @@ class MainWindow(QMainWindow):
         self.go(text)
 
     def eventFilter(self, obj, e):
-        if e.type() == e.Type.MouseButtonPress and e.button() in (Qt.BackButton, Qt.ForwardButton) and \
-                isinstance(obj, QWidget) and obj.window() is self:
-            self.back() if e.button() == Qt.BackButton else self.forward()
-            return True
-        if e.type() == e.Type.MouseButtonRelease and e.button() in (Qt.BackButton, Qt.ForwardButton) and \
-                isinstance(obj, QWidget) and obj.window() is self:
-            return True  # the release too, so nothing else acts on it
+        t = e.type()
+        if t in (e.Type.MouseButtonPress, e.Type.MouseButtonDblClick, e.Type.MouseMove, e.Type.MouseButtonRelease) \
+                and isinstance(obj, QWidget) and obj.window() is self:
+            if t in (e.Type.MouseButtonPress, e.Type.MouseButtonDblClick):
+                side = side_button(e.button())
+                if side is not None:
+                    if not self._side_click:
+                        self._side_click = True
+                        self.back() if side == Qt.BackButton else self.forward()
+                    return True  # the views never see it: no selecting, opening or dragging
+            elif self._side_click:
+                if t == e.Type.MouseButtonRelease:
+                    self._side_click = False
+                return True      # moves while it's held, and its release, go too
         if e.type() == e.Type.KeyPress and e.key() == Qt.Key_Escape:
             if obj is self.headerbar.location:
                 self.headerbar.show_mode("path")

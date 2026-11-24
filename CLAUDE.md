@@ -60,7 +60,9 @@ Linux for tests. The owner writes Python; explain the why of changes.
   Network folder, FOLDERID_NetworkFolder, through IShellFolder) and a computer location "\\\\NAME"
   (`places.is_computer`) lists `computer_shares` (NetShareEnum level 1, disk shares, no $ ones); access denied ->
   login -> `connect_share(\\\\NAME\\IPC$)` -> again. Both via `_load_network` on a worker thread, model mode
-  "network". Mouse side buttons: the window filters the whole application's MouseButtonPress (Back/ForwardButton).
+  "network". Mouse side buttons: the window filters the whole application's mouse events; `side_button` trusts
+  Qt's Back/ForwardButton, and on Windows also asks GetKeyState (Qt 6 reports some mice's side buttons as LEFT); a
+  side click's press, moves and release are all swallowed (`_side_click`).
   Server stars keep `places.star_meta()`; server thumbnails / counts (pref "always" only) use `Server.aux`, a
   second session.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder

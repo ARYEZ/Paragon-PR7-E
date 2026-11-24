@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- Fixed: the mouse's back button acted like a left click. Qt 6 on Windows reports the side buttons of some mice as
+  the left button; PR7-E now asks Windows which button is really down (GetKeyState: left up, XBUTTON1 / XBUTTON2
+  down) and goes back / forward, swallowing the whole click so nothing is selected, opened or dragged.
+
 ## 0.7.0
 
 - **The mouse's back and forward buttons** go back and forward anywhere in the window, as in Files (they were
