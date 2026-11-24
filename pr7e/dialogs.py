@@ -264,6 +264,8 @@ class PropertiesDialog(QDialog):
                     self._row("Created", fs.full_date(created))
             except OSError:
                 pass
+        if one and server is None and os.path.exists(one.path):
+            self._permissions(one)
         d = places.drive_of(entries[0].path) if server is None else None
         if d and d.total:
             self._row("Free space", f"{fs.human_size(d.free)} free of {fs.human_size(d.total)}")
@@ -284,6 +286,48 @@ class PropertiesDialog(QDialog):
         else:
             total = sum(e.size for e in entries)
             self.size.setText(f"{fs.human_size(total)} ({total:,} bytes)")
+
+    def _permissions(self, e: fs.Entry) -> None:
+        """Files' Permissions, the Windows way: the owner, your access, and Explorer's Read-only and Hidden boxes
+        (changed on the file at once)."""
+        self.grid.setRowMinimumHeight(self.rows, 34)  # a gap above, so it reads as its own section
+        self.grid.addWidget(_field("Permissions"), self.rows, 0, 1, 2, Qt.AlignBottom)
+        self.rows += 1
+        self._row("Owner", system.owner(e.path) or "Unknown")
+        writable = os.access(e.path, os.W_OK)
+        self.access = self._row("Access", "Read and write" if writable else "Read only")
+        boxes = QHBoxLayout()
+        boxes.setSpacing(24)
+        self.readonly = QCheckBox("Read-only")
+        self.hidden = QCheckBox("Hidden")
+        try:
+            self.readonly.setChecked(system.is_readonly(e.path))
+            self.hidden.setChecked(system.is_hidden_attr(e.path))
+        except OSError:
+            pass
+        self.readonly.setVisible(not e.is_dir)  # on a folder Windows' read-only flag means something else
+        self.hidden.setEnabled(system.WINDOWS)
+        if not system.WINDOWS:
+            self.hidden.setToolTip("On this system, names starting with a dot are hidden.")
+
+        def change(fn, box):
+            try:
+                fn(e.path, box.isChecked())
+            except OSError as err:
+                box.blockSignals(True)
+                box.setChecked(not box.isChecked())
+                box.blockSignals(False)
+                self.access.setText(err.strerror or str(err))
+                return
+            self.access.setText("Read and write" if os.access(e.path, os.W_OK) else "Read only")
+        self.readonly.toggled.connect(lambda _on: change(system.set_readonly, self.readonly))
+        self.hidden.toggled.connect(lambda _on: change(system.set_hidden, self.hidden))
+        boxes.addWidget(self.readonly)
+        boxes.addWidget(self.hidden)
+        boxes.addStretch(1)
+        self.grid.addWidget(_field("Attributes"), self.rows, 0, Qt.AlignTop)
+        self.grid.addLayout(boxes, self.rows, 1)
+        self.rows += 1
 
     def _row(self, label, value) -> QLabel:
         self.grid.addWidget(_field(label), self.rows, 0, Qt.AlignTop)

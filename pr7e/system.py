@@ -72,3 +72,68 @@ def terminal(folder: str) -> None:
             if shutil.which(term):
                 subprocess.Popen([term], cwd=folder)
                 return
+
+
+# --------------------------------------------------------------------------- Properties' Permissions
+def owner(path: str) -> str:
+    """Who owns the file ("PC\\me"), from its security descriptor on Windows; the user name elsewhere."""
+    if WINDOWS:
+        import ctypes
+        from ctypes import wintypes
+        adv = ctypes.windll.advapi32
+        sid, sd = ctypes.c_void_p(), ctypes.c_void_p()
+        adv.GetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD,
+                                              ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p, ctypes.c_void_p,
+                                              ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+        if adv.GetNamedSecurityInfoW(path, 1, 1, ctypes.byref(sid), None, None, None, ctypes.byref(sd)):
+            return ""  # SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION
+        try:
+            name, dom = ctypes.create_unicode_buffer(256), ctypes.create_unicode_buffer(256)
+            n, d, use = wintypes.DWORD(256), wintypes.DWORD(256), wintypes.DWORD()
+            adv.LookupAccountSidW.argtypes = [wintypes.LPCWSTR, ctypes.c_void_p, wintypes.LPWSTR,
+                                              ctypes.POINTER(wintypes.DWORD), wintypes.LPWSTR,
+                                              ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD)]
+            if not adv.LookupAccountSidW(None, sid, name, ctypes.byref(n), dom, ctypes.byref(d), ctypes.byref(use)):
+                return ""
+            return f"{dom.value}\\{name.value}" if dom.value else name.value
+        finally:
+            ctypes.windll.kernel32.LocalFree(sd)
+    try:
+        import pwd
+        return pwd.getpwuid(os.stat(path).st_uid).pw_name
+    except (ImportError, KeyError, OSError):
+        return ""
+
+
+def is_readonly(path: str) -> bool:
+    import stat
+    st = os.stat(path)
+    if WINDOWS:
+        return bool(st.st_file_attributes & stat.FILE_ATTRIBUTE_READONLY)
+    return not st.st_mode & stat.S_IWUSR
+
+
+def set_readonly(path: str, on: bool) -> None:
+    """Explorer's Read-only box: on Windows os.chmod sets or clears the read-only attribute."""
+    import stat
+    mode = os.stat(path).st_mode
+    os.chmod(path, (mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)) if on else (mode | stat.S_IWUSR))
+
+
+def is_hidden_attr(path: str) -> bool:
+    if not WINDOWS:
+        return os.path.basename(path).startswith(".")
+    import stat
+    return bool(os.stat(path).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN)
+
+
+def set_hidden(path: str, on: bool) -> None:
+    """Explorer's Hidden box (Windows' hidden attribute)."""
+    if not WINDOWS:
+        raise OSError(0, "On this system, names starting with a dot are hidden.")
+    import ctypes
+    import stat
+    attrs = os.stat(path).st_file_attributes
+    attrs = attrs | stat.FILE_ATTRIBUTE_HIDDEN if on else attrs & ~stat.FILE_ATTRIBUTE_HIDDEN
+    if not ctypes.windll.kernel32.SetFileAttributesW(path, attrs & 0xFFFF or 0x80):  # NORMAL when nothing else
+        raise ctypes.WinError()

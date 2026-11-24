@@ -426,3 +426,193 @@ def computer_shares(computer: str, hidden: bool = False) -> list[tuple[str, str]
     finally:
         if buf:
             netapi.NetApiBufferFree(buf)
+
+
+# --------------------------------------------------------------------------- the folder's own menu (empty space)
+def _folder_view_menu(folder: str, hwnd=None):
+    """The folder's background menu (what Explorer shows on empty space, with New), from its IShellFolder's
+    CreateViewObject(IID_IContextMenu)."""
+    com_init()
+    shell32.SHBindToObject.argtypes = [c_void_p, c_void_p, c_void_p, POINTER(GUID), POINTER(c_void_p)]
+    shell32.SHBindToObject.restype = HRESULT
+    pidl, psf, pcm = c_void_p(), c_void_p(), c_void_p()
+    try:
+        shell32.SHParseDisplayName(os.path.abspath(folder), None, byref(pidl), 0, None)
+        shell32.SHBindToObject(None, pidl, None, byref(IID_IShellFolder), byref(psf))
+        _method(psf, 8, HRESULT, wintypes.HWND, POINTER(GUID), POINTER(c_void_p))(hwnd, byref(IID_IContextMenu),
+                                                                              byref(pcm))
+        return pcm
+    finally:
+        _release(psf)
+        if pidl:
+            ole32.CoTaskMemFree(pidl)
+
+
+def background_menu_items(folder: str) -> list[str]:
+    """The names in the folder's Windows menu, without showing it (tests)."""
+    pcm = _folder_view_menu(folder)
+    hmenu = user32.CreatePopupMenu()
+    try:
+        _method(pcm, 3, HRESULT, c_void_p, c_uint, c_uint, c_uint, c_uint)(hmenu, 0, FIRST, LAST,
+                                                                           CMF_NORMAL | CMF_EXPLORE)
+        cm3 = _query(pcm, IID_IContextMenu3)  # New fills its submenu when asked
+        if cm3:
+            for i in range(user32.GetMenuItemCount(hmenu)):
+                sub = user32.GetSubMenu(hmenu, i)
+                if sub:
+                    try:
+                        _method(cm3, 7, HRESULT, c_uint, wintypes.WPARAM, wintypes.LPARAM, POINTER(LRESULT))(
+                            0x117, sub, i, byref(LRESULT()))
+                    except OSError:
+                        pass
+            _release(cm3)
+        return _names(hmenu)
+    finally:
+        user32.DestroyMenu(hmenu)
+        _release(pcm)
+
+
+def show_background_menu(folder: str, owner: int = 0) -> bool:
+    """Show the folder's Windows menu (New, Paste shortcut...) at the mouse and run what's picked."""
+    global _host
+    if not available or not os.path.isdir(folder):
+        return False
+    _host = _host or _MenuHost()
+    hwnd = _host.window(owner)
+    pcm = _folder_view_menu(folder, hwnd)
+    hmenu = user32.CreatePopupMenu()
+    try:
+        _method(pcm, 3, HRESULT, c_void_p, c_uint, c_uint, c_uint, c_uint)(hmenu, 0, FIRST, LAST,
+                                                                           CMF_NORMAL | CMF_EXPLORE)
+        _host.cm3 = _query(pcm, IID_IContextMenu3)
+        _host.cm2 = None if _host.cm3 else _query(pcm, IID_IContextMenu2)
+        pt = POINT()
+        user32.GetCursorPos(byref(pt))
+        user32.SetForegroundWindow(hwnd)
+        cmd = user32.TrackPopupMenuEx(hmenu, 0x100 | 0x2, pt.x, pt.y, hwnd, None)
+        user32.PostMessageW(hwnd, 0, 0, 0)
+        if cmd < FIRST:
+            return False
+        directory = ctypes.create_unicode_buffer(os.path.abspath(folder))
+        info = CMINVOKECOMMANDINFOEX()
+        info.cbSize = sizeof(info)
+        info.fMask = 0x4000 | 0x20000000
+        info.hwnd = owner or hwnd
+        info.lpVerb = info.lpVerbW = cmd - FIRST
+        info.lpDirectoryW = ctypes.cast(directory, c_void_p).value
+        info.nShow = 1
+        info.ptInvoke = pt
+        try:
+            _method(pcm, 4, HRESULT, c_void_p)(byref(info))
+        except OSError:
+            return False
+        return True
+    finally:
+        for cm in (_host.cm3, _host.cm2):
+            _release(cm)
+        _host.cm2 = _host.cm3 = None
+        user32.DestroyMenu(hmenu)
+        _release(pcm)
+
+
+# --------------------------------------------------------------------------- Open With: the apps for a type
+IID_IShellItem = None
+if available:
+    IID_IShellItem = _guid("43826d1e-e718-42ee-bc55-a1e261c37bfe")
+    IID_IDataObject = _guid("0000010e-0000-0000-C000-000000000046")
+    BHID_DataObject = _guid("B8C0BD9F-ED24-455c-83E6-D5390C4FE8C4")
+
+
+def _co_str(fn) -> str:
+    out = c_wchar_p()
+    fn(byref(out))
+    try:
+        return out.value or ""
+    finally:
+        ole32.CoTaskMemFree(ctypes.cast(out, c_void_p))
+
+
+def open_with_apps(path: str) -> list[tuple[str, str]]:
+    """(name shown, handler id) of the apps Windows recommends for the file's type (SHAssocEnumHandlers): the list
+    in Explorer's Open with submenu."""
+    if not available:
+        return []
+    com_init()
+    ext = os.path.splitext(path)[1] or "*"
+    shell32.SHAssocEnumHandlers.argtypes = [c_wchar_p, c_int, POINTER(c_void_p)]
+    shell32.SHAssocEnumHandlers.restype = HRESULT
+    enum = c_void_p()
+    out, seen = [], set()
+    try:
+        shell32.SHAssocEnumHandlers(ext, 1, byref(enum))  # ASSOC_FILTER_RECOMMENDED
+        nxt = _method(enum, 3, HRESULT, c_ulong, POINTER(c_void_p), POINTER(c_ulong))
+        while True:
+            h, got = c_void_p(), c_ulong()
+            if nxt(1, byref(h), byref(got)) != 0 or not got.value:
+                break
+            try:
+                ui = _co_str(_method(h, 4, HRESULT, POINTER(c_wchar_p)))
+                name = _co_str(_method(h, 3, HRESULT, POINTER(c_wchar_p)))
+                if ui and name.lower() not in seen:
+                    seen.add(name.lower())
+                    out.append((ui, name))
+            except OSError:
+                pass
+            finally:
+                _release(h)
+    except OSError:
+        return out
+    finally:
+        _release(enum)
+    return out
+
+
+def open_with_app(path: str, handler: str) -> bool:
+    """Open the file with one of open_with_apps' handlers (IAssocHandler::Invoke on the file's data object)."""
+    if not available:
+        return False
+    com_init()
+    ext = os.path.splitext(path)[1] or "*"
+    enum, item, data = c_void_p(), c_void_p(), c_void_p()
+    try:
+        shell32.SHAssocEnumHandlers(ext, 0, byref(enum))  # ASSOC_FILTER_NONE: find it whatever its standing
+        nxt = _method(enum, 3, HRESULT, c_ulong, POINTER(c_void_p), POINTER(c_ulong))
+        shell32.SHCreateItemFromParsingName(os.path.abspath(path), None, byref(IID_IShellItem), byref(item))
+        _method(item, 3, HRESULT, c_void_p, POINTER(GUID), POINTER(GUID), POINTER(c_void_p))(
+            None, byref(BHID_DataObject), byref(IID_IDataObject), byref(data))
+        while True:
+            h, got = c_void_p(), c_ulong()
+            if nxt(1, byref(h), byref(got)) != 0 or not got.value:
+                return False
+            try:
+                if _co_str(_method(h, 3, HRESULT, POINTER(c_wchar_p))).lower() == handler.lower():
+                    _method(h, 8, HRESULT, c_void_p)(data)
+                    return True
+            except OSError:
+                return False
+            finally:
+                _release(h)
+    except OSError:
+        return False
+    finally:
+        _release(data)
+        _release(item)
+        _release(enum)
+
+
+def open_with_dialog(path: str, owner: int = 0) -> bool:
+    """Windows' "How do you want to open this file?" with "Always use this app" (SHOpenWithDialog): the only way
+    Windows 10 / 11 let a default app be chosen, on purpose (so no program can take over a file type quietly)."""
+    if not available:
+        return False
+
+    class OPENASINFO(Structure):
+        _fields_ = [("pcszFile", c_wchar_p), ("pcszClass", c_wchar_p), ("oaifInFlags", c_int)]
+    shell32.SHOpenWithDialog.argtypes = [wintypes.HWND, POINTER(OPENASINFO)]
+    shell32.SHOpenWithDialog.restype = HRESULT
+    info = OPENASINFO(os.path.abspath(path), None, 0x1 | 0x2 | 0x4)  # ALLOW_REGISTRATION | REGISTER_EXT | EXEC
+    try:
+        shell32.SHOpenWithDialog(owner or None, byref(info))
+        return True
+    except OSError:
+        return False

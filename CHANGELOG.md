@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0
+
+PR7-E does everything planned from GNOME Files; this is its first permanent release.
+
+- **Show More Options on empty space** (and Shift+F10 with nothing selected): the folder's own Windows menu, with
+  Explorer's New submenu (Text Document, Shortcut, Office documents...).
+- **Open With**: a submenu of the apps Windows recommends for the file's type (as in Explorer), and Open With Other
+  Application… opens Windows' chooser with "Always use this app" (the only way Windows 10 / 11 let a default app be
+  changed, on purpose).
+- **Properties → Permissions**: the owner, your access (read and write / read only), and Explorer's Read-only and
+  Hidden boxes, which change the file at once.
+
 ## 0.8.0
 
 - **Progress you can see**, as in Files: the operations panel opens by itself for anything that isn't instant

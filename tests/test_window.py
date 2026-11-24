@@ -944,3 +944,55 @@ def test_instant_moves_leave_a_note(win, home):
     assert (home / "Music" / "notes.txt").exists()
     assert w.status.text() == "Moved “notes.txt” to “Music”"
     assert not w.popover.isVisible()                                         # nothing to watch
+
+
+def test_properties_permissions(win, home):
+    from pr7e import system
+    from pr7e.dialogs import PropertiesDialog
+    from pr7e import fs as fsmod
+    f = home / "Documents" / "notes.txt"
+    d = PropertiesDialog([fsmod.entry_for(str(f))], win)
+    texts = [d.grid.itemAt(i).widget().text() for i in range(d.grid.count()) if d.grid.itemAt(i).widget()
+             and hasattr(d.grid.itemAt(i).widget(), "text")]
+    assert "PERMISSIONS" in texts and "OWNER" in texts and "Read and write" in texts
+    assert not d.readonly.isChecked()
+    d.readonly.setChecked(True)                    # changes the file at once
+    assert system.is_readonly(str(f)) and d.access.text() in ("Read only", "Read and write")
+    d.readonly.setChecked(False)
+    assert not system.is_readonly(str(f)) and os.access(str(f), os.W_OK)
+    assert d.hidden.isEnabled() == system.WINDOWS
+    d.done(0)
+    folder = PropertiesDialog([fsmod.entry_for(str(home / "Music"))], win)
+    assert not folder.readonly.isVisibleTo(folder)  # read-only on folders means something else on Windows
+    folder.done(0)
+
+
+def test_open_with_and_folder_menu_items(win, home):
+    from pr7e import winshell
+    w = win
+    menus = []
+    w.answers["context"] = menus.append
+    w.go(str(home / "Documents"))
+    w.tab.select_paths([str(home / "Documents" / "notes.txt")])
+    w._item_menu(w.tab.selected())
+    texts = [a.text() for a in menus[-1].actions()]
+    assert "Open With Other Application…" in texts
+    w._background_menu()
+    more = next(a for a in menus[-1].actions() if a.text() == "Show More Options")
+    assert more.isEnabled() == winshell.available
+
+
+@pytest.mark.skipif(sys.platform != "win32" or not os.environ.get("CI"), reason="Windows' shell: CI only")
+def test_real_windows_folder_menu_open_with_and_hidden(tmp_path):
+    from pr7e import system, winshell
+    items = [i.strip() for i in winshell.background_menu_items(str(tmp_path))]
+    assert "New" in items, items
+    f = tmp_path / "a.txt"
+    f.write_text("a")
+    apps = winshell.open_with_apps(str(f))
+    assert apps and all(name and handler for name, handler in apps), apps
+    system.set_hidden(str(f), True)
+    assert system.is_hidden_attr(str(f))
+    system.set_hidden(str(f), False)
+    assert not system.is_hidden_attr(str(f))
+    assert system.owner(str(f))

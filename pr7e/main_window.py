@@ -1449,10 +1449,38 @@ class MainWindow(QMainWindow):
                 return
         self.run(archive.ExtractJob(path, dest))
 
+    def _open_with(self, path: str, handler: str) -> None:
+        if not winshell.open_with_app(path, handler):
+            self.open_file(path)
+        else:
+            places.add_recent(path)
+
+    def _open_with_chooser(self, path: str) -> None:
+        """Windows' chooser, with "Always use this app": how Windows 10 / 11 let the default app be changed."""
+        if not (winshell.available and winshell.open_with_dialog(path, int(self.winId()))):
+            system.open_with(path)
+
+    def windows_folder_menu(self) -> None:
+        """Show More Options on empty space: the folder's own Windows menu, with Explorer's New submenu."""
+        folder = self.tab.location
+        if not winshell.available or folder in places.SPECIAL or servers.is_remote(folder) or \
+                places.is_computer(folder):
+            return
+
+        def show():
+            try:
+                winshell.show_background_menu(folder, int(self.winId()))
+            except OSError as e:
+                self._message("Show More Options", "The Windows menu couldn\u2019t be opened.", [str(e)])
+        QTimer.singleShot(0, show)
+
     def windows_menu(self, entries: list[fs.Entry] | None = None, extended: bool = False) -> None:
         """Show More Options: the full Windows right-click menu (other programs' items, Send to...). Opened after
         PR7-E's own menu has closed; what it changes is picked up by the folder watcher."""
         entries = entries if entries is not None else self.tab.selected()
+        if not entries:  # Shift+F10 with nothing selected: the folder's own menu
+            self.windows_folder_menu()
+            return
         paths = [e.path for e in entries if e.trash is None and e.kind not in ("drive", "usb")] or \
             [e.path for e in entries if e.kind in ("drive", "usb")]
         if not paths or not winshell.available:
@@ -1903,7 +1931,12 @@ class MainWindow(QMainWindow):
             app = system.default_app(files[0].path) if len(files) == 1 else None
             m.addAction(f"Open With {app}" if app else "Open", self.open_selected).setShortcut(QKeySequence("Return"))
             if len(files) == 1:
-                m.addAction("Open With Other Application", lambda: system.open_with(files[0].path))
+                apps = [(n, h) for n, h in winshell.open_with_apps(files[0].path) if n != app]
+                if apps:  # the apps Windows recommends for this type, as Explorer's Open with submenu
+                    sub = m.addMenu("Open With")
+                    for name, handler in apps:
+                        sub.addAction(name, lambda h=handler, p=files[0].path: self._open_with(p, h))
+                m.addAction("Open With Other Application\u2026", lambda: self._open_with_chooser(files[0].path))
         if t.search is not None or t.location in ("recent:", "starred:"):
             if len(entries) == 1:
                 m.addAction("Open Item Location", lambda: self.open_location(entries[0]))
@@ -1989,6 +2022,10 @@ class MainWindow(QMainWindow):
             m.addAction("Open in Terminal", lambda: system.terminal(t.location))
             m.addSeparator()
             m.addAction(self.act["properties"])
+            m.addSeparator()
+            more = m.addAction("Show More Options", self.windows_folder_menu)
+            more.setShortcut(QKeySequence("Shift+F10"))
+            more.setEnabled(winshell.available)
         return self._popup(m, gpos)
 
     def _sidebar_menu(self, pos) -> QMenu | None:

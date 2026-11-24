@@ -69,6 +69,11 @@ Linux for tests. The owner writes Python; explain the why of changes.
   once a job has run OPEN_AFTER (0.4 s) unless closed by hand (`ops_closed`), drives the `progress` strip under the
   header bar, keeps finished jobs ("Finished") SHOW_FINISHED s; `done_note` puts the job title in the past tense for
   the corner note (`_toast` holds it 3 s over the selection text).
+- 1.0: `winshell.show_background_menu` / `background_menu_items` (the folder's IShellFolder::CreateViewObject
+  IContextMenu, Explorer's empty-space menu with New); `open_with_apps` / `open_with_app` (SHAssocEnumHandlers,
+  IAssocHandler::Invoke on the item's IDataObject); `open_with_dialog` (SHOpenWithDialog with "always"). Properties'
+  Permissions use `system.owner` (GetNamedSecurityInfoW + LookupAccountSidW), `set_readonly` (os.chmod),
+  `set_hidden` (SetFileAttributesW).
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list
