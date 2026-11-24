@@ -1143,8 +1143,11 @@ class OperationsPopover(QFrame):
                 k.clicked.connect(job.cancel)
                 row.addWidget(k, 0, Qt.AlignVCenter)
                 self.lay.addLayout(row)
-                self.rows.append((t, bar, d))
-        for job, (_t, bar, d) in zip(self.jobs, self.rows):
-            bar.setValue(int(job.fraction() * 1000))
-            d.setText(job.detail())
+                self.rows.append((t, bar, d, k))
+        for job, (_t, bar, d, k) in zip(self.jobs, self.rows):
+            finished = job.state in ("done", "cancelled")
+            bar.setValue(1000 if job.state == "done" else int(job.fraction() * 1000))
+            d.setText(("Finished" if not job.errors else "Finished, with problems") if job.state == "done" else
+                      "Cancelled" if job.state == "cancelled" else job.detail())
+            k.setEnabled(not finished)
         self.adjustSize()

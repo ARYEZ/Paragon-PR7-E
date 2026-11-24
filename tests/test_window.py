@@ -880,3 +880,67 @@ def test_side_button_reported_as_left_click(win, home, monkeypatch):
     send(T.MouseButtonRelease, Qt.LeftButton, Qt.NoButton)
     assert w.tab.location == str(home / "Music" / "Paragon")
     assert [e.name for e in w.tab.selected()] == ["ELSEWORLD"]
+
+
+def test_progress_shows_by_itself(win, home):
+    """Files opens its operations panel for anything that isn't instant, shows a bar, then "Finished"."""
+    from pr7e import ops
+
+    class Slow(ops.Job):
+        kind = "copy"
+
+        def __init__(self):
+            super().__init__()
+            self.title = "Copying “big” to “Backup”"
+            self.total_bytes = 1000
+
+        def work(self):
+            for _ in range(10):
+                self.check()
+                time.sleep(0.08)
+                self.done_bytes += 100
+
+    w = win
+    w.sync_jobs = False
+    job = w.run(Slow())
+    assert wait(lambda: w.popover.isVisible(), 3)              # opened by itself
+    assert w.progress.isVisible() and w.headerbar.ops.isVisible()
+    assert wait(lambda: w.progress.value() > 0, 3)
+    assert w.popover.rows[0][0].text() == job.title
+    assert w.runner.wait(5)
+    QApplication.processEvents()
+    assert w.popover.isVisible() and w.popover.rows[0][2].text() == "Finished"   # for a moment
+    assert not w.progress.isVisible()
+    assert w.status.text() == "Copied “big” to “Backup”"
+    assert wait(lambda: not w.popover.isVisible() and not w.headerbar.ops.isVisible(), 4)
+
+
+def test_closing_the_panel_keeps_it_closed(win, home):
+    from pr7e import ops
+
+    class Slow(ops.Job):
+        kind = "copy"
+
+        def work(self):
+            for _ in range(15):
+                self.check()
+                time.sleep(0.05)
+
+    w = win
+    w.sync_jobs = False
+    w.run(Slow())
+    assert wait(lambda: w.popover.isVisible(), 3)
+    w._key("operations")                                        # closed by hand
+    QApplication.processEvents()
+    time.sleep(0.2)
+    QApplication.processEvents()
+    assert not w.popover.isVisible()
+    assert w.runner.wait(5)
+
+
+def test_instant_moves_leave_a_note(win, home):
+    w = win
+    w.drop([str(home / "Documents" / "notes.txt")], str(home / "Music"))   # same drive: a rename
+    assert (home / "Music" / "notes.txt").exists()
+    assert w.status.text() == "Moved “notes.txt” to “Music”"
+    assert not w.popover.isVisible()                                         # nothing to watch

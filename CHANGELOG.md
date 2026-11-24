@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+- **Progress you can see**, as in Files: the operations panel opens by itself for anything that isn't instant
+  (copies, moves to another drive, uploads, compress, extract...), with each operation's bar, "x of y — n seconds
+  left" and Cancel; a thin family-gradient bar runs across the window under the header while anything runs; a
+  finished operation shows "Finished" for a moment, then the panel closes. Closing the panel keeps it closed until
+  those operations end; a click elsewhere closes it.
+- Every operation leaves a short note in the corner when it's done ("Moved “Elseworld” to “Backup”"), instant ones
+  (a move on the same drive is a rename) included.
+
 ## 0.7.1
 
 - Fixed: the mouse's back button acted like a left click. Qt 6 on Windows reports the side buttons of some mice as

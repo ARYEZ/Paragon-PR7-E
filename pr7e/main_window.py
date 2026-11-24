@@ -12,6 +12,7 @@ import posixpath
 import sys
 import struct
 import threading
+import time
 
 from PySide6.QtCore import QFileSystemWatcher, QItemSelectionModel, QMimeData, QObject, QPoint, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
@@ -70,6 +71,20 @@ def side_button(reported):
             return None
     return None
 
+
+
+PAST = {"Copying": "Copied", "Moving": "Moved", "Deleting": "Deleted", "Restoring": "Restored",
+        "Compressing": "Compressed", "Extracting": "Extracted", "Emptying": "Emptied"}
+
+
+def done_note(job) -> str:
+    """The note shown when an operation ends: its title in the past tense ("Moved “Elseworld” to “Backup”").
+    Renames, new folders and opening a server file need none: what they made is selected or opened."""
+    if job.state != "done" or job.kind in ("rename", "mkdir", "open") or job.origin:
+        return ""
+    verb, _, rest = job.title.partition(" ")
+    past = PAST.get(verb)
+    return f"{past} {rest}" if past else ""
 
 
 def _login_refused(error) -> bool:
@@ -171,6 +186,9 @@ class MainWindow(QMainWindow):
         self.answers: dict = {}                 # tests: kind -> function(payload) instead of a dialog
         self.shell_reg = None                   # tests: a stand-in registry for "Use PR7-E for Folders"
         self._side_click = False                # a mouse back / forward click being swallowed
+        self.finished_ops: list = []            # (job, when) shown as "Finished" for a moment
+        self.ops_closed = False                 # the operations panel was closed while things ran
+        self.toast_until = 0.0
         self._bridge = _Bridge()
         self._bridge.done.connect(lambda box: box[0](*box[1]), Qt.QueuedConnection)
         self.asker = Asker(self._ask)
@@ -234,6 +252,18 @@ class MainWindow(QMainWindow):
         self.headerbar.search.textEdited.connect(lambda _t: self.search_timer.start())
         self.headerbar.search.installEventFilter(self)
         right.addWidget(self.headerbar)
+        # Files' progress, where it can't be missed: a thin family-gradient bar across the window while anything
+        # runs (the operations panel holds the details).
+        from PySide6.QtWidgets import QProgressBar
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 1000)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(3)
+        self.progress.setStyleSheet(f"QProgressBar {{ background: {theme.PANEL_EDGE}; border: none; border-radius: 0;"
+                                    f" }} QProgressBar::chunk {{ background: {theme.qss_gradient(theme.LIT)}; "
+                                    "border-radius: 0; }")
+        self.progress.hide()
+        right.addWidget(self.progress)
         self.tabbar = TabStrip()
         self.tabbar.current_changed.connect(self.set_current_tab)
         self.tabbar.close_requested.connect(self.close_tab)
@@ -827,6 +857,11 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, obj, e):
         t = e.type()
+        if t == e.Type.MouseButtonPress and self.popover.isVisible() and isinstance(obj, QWidget) and \
+                obj.window() is self and not (obj is self.popover or self.popover.isAncestorOf(obj) or
+                                              obj is self.headerbar.ops):
+            self.popover.hide()  # a click elsewhere closes it, as Files' popover
+            self.ops_closed = True
         if t in (e.Type.MouseButtonPress, e.Type.MouseButtonDblClick, e.Type.MouseMove, e.Type.MouseButtonRelease) \
                 and isinstance(obj, QWidget) and obj.window() is self:
             if t in (e.Type.MouseButtonPress, e.Type.MouseButtonDblClick):
@@ -988,7 +1023,7 @@ class MainWindow(QMainWindow):
 
     # ================================================================== the selection label
     def _selection(self, tab: Tab):
-        if tab is not self.tab:
+        if tab is not self.tab or time.monotonic() < self.toast_until:
             return
         entries = tab.selected()
         if not entries:
@@ -1074,25 +1109,40 @@ class MainWindow(QMainWindow):
     def run(self, job: ops.Job, origin: str = "") -> ops.Job:
         """Start a job; `origin` is "undo" / "redo" for jobs that came from those stacks."""
         job.origin = origin
+        job.began = time.monotonic()
         self.runner.start(job, sync=self.sync_jobs)
         if job in self.runner.running:
             self.tick.start()
             self._tick()
         return job
 
+    OPEN_AFTER = 0.4      # s: Files opens its operations panel for anything that isn't instant
+    SHOW_FINISHED = 2.0   # s: a finished operation stays in the panel, "Finished", this long
+
     def _tick(self):
-        jobs = list(self.runner.running)
+        now = time.monotonic()
+        self.finished_ops = [(j, t) for j, t in self.finished_ops if now - t < self.SHOW_FINISHED]
+        running = list(self.runner.running)
+        jobs = running + [j for j, _t in self.finished_ops]
         hb = self.headerbar
         if not jobs:
             self.tick.stop()
             hb.ops.hide()
             self.popover.hide()
+            self.progress.hide()
+            self.ops_closed = False
             return
         if not hb.ops.isVisible():
             hb.ops.show()
-        hb.ops.fraction = sum(j.fraction() for j in jobs) / len(jobs)
+        hb.ops.fraction = sum(j.fraction() for j in running) / len(running) if running else 1.0
         hb.ops.update()
+        self.progress.setVisible(bool(running))
+        self.progress.setValue(int(hb.ops.fraction * 1000))
         self.popover.set_jobs(jobs)
+        if not self.popover.isVisible() and not self.ops_closed and \
+                any(now - getattr(j, "began", now) >= self.OPEN_AFTER for j in running):
+            self._place_popover()
+            self.popover.show()
         if self.popover.isVisible():
             self._place_popover()
 
@@ -1103,6 +1153,9 @@ class MainWindow(QMainWindow):
         self.popover.raise_()
 
     def _job_done(self, job: ops.Job):
+        if self.popover.isVisible() or time.monotonic() - getattr(job, "began", 0) >= self.OPEN_AFTER:
+            self.finished_ops.append((job, time.monotonic()))
+            self.tick.start()
         self._tick()
         for folder in job.changed:
             self.dirty.add(key(folder))
@@ -1165,6 +1218,9 @@ class MainWindow(QMainWindow):
                     "text": "This drive has no Trash. If you delete an item, it will be permanently lost.",
                     "button": "Delete"}):
                 self.run(ops.DeleteJob(job.untrashable))
+        note = done_note(job)
+        if note and not job.errors:
+            self._toast(note)
         if job.errors:
             self._message("Errors", {"copy": "Some files couldn’t be copied.",
                                      "move": "Some files couldn’t be moved.",
@@ -1739,7 +1795,9 @@ class MainWindow(QMainWindow):
         elif name == "operations":
             if self.popover.isVisible():
                 self.popover.hide()
+                self.ops_closed = True  # stays closed until these operations end
             else:
+                self.ops_closed = False
                 self._tick()
                 self._place_popover()
                 self.popover.show()
@@ -2039,9 +2097,11 @@ class MainWindow(QMainWindow):
     def _message(self, title: str, heading: str, lines: list[str]) -> None:
         self._ask("message", (title, heading, lines))
 
-    def _toast(self, text: str) -> None:
-        """A short note in the corner (Files' toasts), until the selection changes."""
+    def _toast(self, text: str, seconds: float = 3.0) -> None:
+        """A short note in the corner (Files' toasts): it stays a few seconds, then the selection shows again."""
         self.status.show_text(text)
+        self.toast_until = time.monotonic() + seconds
+        QTimer.singleShot(int(seconds * 1000) + 50, lambda: self._selection(self.tab) if self.tab else None)
 
     def _shortcuts(self):
         from .dialogs import ShortcutsDialog

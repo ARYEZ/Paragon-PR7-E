@@ -65,6 +65,10 @@ Linux for tests. The owner writes Python; explain the why of changes.
   side click's press, moves and release are all swallowed (`_side_click`).
   Server stars keep `places.star_meta()`; server thumbnails / counts (pref "always" only) use `Server.aux`, a
   second session.
+- Progress: `MainWindow._tick` (150 ms while anything runs or just finished) opens the operations popover by itself
+  once a job has run OPEN_AFTER (0.4 s) unless closed by hand (`ops_closed`), drives the `progress` strip under the
+  header bar, keeps finished jobs ("Finished") SHOW_FINISHED s; `done_note` puts the job title in the past tense for
+  the corner note (`_toast` holds it 3 s over the selection text).
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list
