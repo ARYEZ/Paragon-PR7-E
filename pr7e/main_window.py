@@ -1472,10 +1472,17 @@ class MainWindow(QMainWindow):
             items.append(("View in PR7-P", lambda: family.launch("PR7-P", [one.path])))
         if one is not None and one.kind in ("audio", "video") and family.find("PR7-M"):
             items.append(("Play in PR7-M", lambda: family.launch("PR7-M", [one.path])))
+        if len(folders) == 1 and not files and family.find("PR7-IS"):
+            items.append(("Search with PR7-IS", lambda: self.search_with_pr7is(folders[0].path)))
         if items:
             m.addSeparator()
             for text, fn in items:
                 m.addAction(text, fn)
+
+    def search_with_pr7is(self, folder: str) -> bool:
+        """PR7-IS (Everything's way) searching inside this folder: its search box starts with the folder as a path
+        word, "C:\\Music\\" in quotes, which keeps every result under that folder; type a name after it."""
+        return family.launch("PR7-IS", ['"' + folder.rstrip("\\/") + os.sep + '"'])
 
     def _open_with(self, path: str, handler: str) -> None:
         if not winshell.open_with_app(path, handler):
@@ -2051,6 +2058,8 @@ class MainWindow(QMainWindow):
         elif real:
             m.addAction("Add to Bookmarks", self.bookmark).setShortcut(QKeySequence("Ctrl+D"))
             m.addAction("Open in Terminal", lambda: system.terminal(t.location))
+            if family.find("PR7-IS"):
+                m.addAction("Search with PR7-IS", lambda: self.search_with_pr7is(t.location))
             m.addSeparator()
             m.addAction(self.act["properties"])
             m.addSeparator()

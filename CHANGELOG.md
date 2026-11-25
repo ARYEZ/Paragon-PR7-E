@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+
+- **Search with PR7-IS**: a folder's right-click menu, and the folder's empty space, start PR7-IS searching inside that folder (the folder is put in its search box as Everything's path word; type a name after it). Offered when PR7-IS is installed.
+
 ## 1.3.0
 
 - **One finish for the whole family.** Choosing OBSIDIAN or AURORA here switches every Paragon app, open ones included (within a couple of seconds), and every app starts in the family's choice.

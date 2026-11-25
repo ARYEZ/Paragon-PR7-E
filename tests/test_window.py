@@ -1045,6 +1045,15 @@ def test_family_links(win, home, monkeypatch):
     assert "Play in PR7-M" in items and "Open in PR7-R" not in items
     items = menu_for(home / "Music" / "pic.jpg", home / "Music" / "clip.mkv")
     assert "View in PR7-P" not in items and "Play in PR7-M" not in items      # one file each
+    folder = home / "Music" / "Paragon"
+    assert "Search with PR7-IS" not in menu_for(folder)          # PR7-IS not installed
+    installed.add("PR7-IS")
+    menu_for(folder)["Search with PR7-IS"].trigger()             # a folder: PR7-IS searching inside it
+    assert started[-1] == ("PR7-IS", ['"' + str(folder) + os.sep + '"'])
+    assert "Search with PR7-IS" not in menu_for(folder, home / "Music" / "song.mp3")   # one folder only
+    w._background_menu()                                          # empty space: the folder shown
+    {a.text(): a for a in menus[-1].actions()}["Search with PR7-IS"].trigger()
+    assert started[-1] == ("PR7-IS", ['"' + str(home / "Music") + os.sep + '"'])
     installed.clear()                                  # not installed: not offered
     items = menu_for(home / "Music" / "song.mp3")
     assert "Edit Tags in PR7-L" not in items

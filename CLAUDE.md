@@ -21,6 +21,7 @@ Linux for tests. The owner writes Python; explain the why of changes.
   only on CI.
 - Family links (`_family_items`): Edit in PR7-W, Edit Tags in PR7-L, Open in PR7-Z, Open in PR7-R (PDFs),
   View in PR7-P / Play in PR7-M (one file: they take one); offered only when `family.find` finds the app.
+  Search with PR7-IS (one folder, or the empty-space menu): `search_with_pr7is` passes `"<folder>\"`, a path word.
 - `pr7e/places.py` (no Qt): sidebar places; Windows known folders (SHGetKnownFolderPath); drives; bookmarks and
   stars in settings; Recent from `%APPDATA%\Microsoft\Windows\Recent\*.lnk` (`lnk_target` parses LinkInfo).
 - `pr7e/system.py`: open (os.startfile + SHAddToRecentDocs), Windows' Open with chooser, default app / type names
