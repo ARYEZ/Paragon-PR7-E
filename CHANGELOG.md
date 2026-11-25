@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Knows the whole family: PR7-DU, PR7-CB, PR7-IS, PR7-PM and PR7-SM are in its list of family apps (their permanent install IDs), so the family links find them when they're installed.
+
 ## 1.2.0
 
 - **More family links** in the right-click menu: **Open in PR7-R** for PDFs (one tab each), **View in PR7-P** for a picture, **Play in PR7-M** for a song or video, when those apps are installed.
