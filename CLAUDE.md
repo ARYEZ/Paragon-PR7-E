@@ -19,6 +19,8 @@ Linux for tests. The owner writes Python; explain the why of changes.
   `<drive>:\$Recycle.Bin\<SID>` to list/restore) or a freedesktop trash folder (Linux). **`PR7E_TRASH` points Trash
   at a folder: tests always set it** (conftest), so they never touch the real Recycle Bin; the one real-bin test runs
   only on CI.
+- Family links (`_family_items`): Edit in PR7-W, Edit Tags in PR7-L, Open in PR7-Z, Open in PR7-R (PDFs),
+  View in PR7-P / Play in PR7-M (one file: they take one); offered only when `family.find` finds the app.
 - `pr7e/places.py` (no Qt): sidebar places; Windows known folders (SHGetKnownFolderPath); drives; bookmarks and
   stars in settings; Recent from `%APPDATA%\Microsoft\Windows\Recent\*.lnk` (`lnk_target` parses LinkInfo).
 - `pr7e/system.py`: open (os.startfile + SHAddToRecentDocs), Windows' Open with chooser, default app / type names
@@ -88,7 +90,7 @@ Linux for tests. The owner writes Python; explain the why of changes.
   installed` (CI installs with /MERGETASKS=defaultfolders), uninstalls, `... uninstalled`. The spec gives the .exe file details and no UPX; CI builds PyInstaller's
   bootloader from source and scans with Defender (PR7-F's false-positive fix).
 
-- Updates: `pr7e/updates.py` (no Qt; GitHub's public releases/latest, User-Agent names only the app, installer asset `PR7-E-Setup-*.exe`, run with /SILENT /relaunch=1) and `update_ui.py` (once-a-day check from app.py, the menu's Check for Updates, UpdateDialog; settings updates/auto|last|skip; `notify` for tests). The installer's [Code] Relaunch starts PR7-E again only for /relaunch=1. Same files in every family app (PR7-W's update_ui imports PyQt6): keep them in step. `family.py`: the other family apps by their permanent AppIds (uninstall InstallLocation).
+- Updates: `pr7e/updates.py` (no Qt; GitHub's public releases/latest, User-Agent names only the app, installer asset `PR7-E-Setup-*.exe`, run with /SILENT /relaunch=1) and `update_ui.py` (once-a-day check from app.py, the menu's Check for Updates, UpdateDialog; settings updates/auto|last|skip; `notify` for tests). The installer's [Code] Relaunch starts PR7-E again only for /relaunch=1. Same files in every family app (PR7-W's update_ui imports PyQt6): keep them in step. With PR7-U (the family installer) installed, update_ui offers it (`_family_app`, `open_family`; `answer` for tests); every app has the shared family.py with all ten AppIds. `family.py`: the other family apps by their permanent AppIds (uninstall InstallLocation).
 
 ## The look (family rules)
 

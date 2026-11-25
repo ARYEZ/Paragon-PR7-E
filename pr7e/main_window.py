@@ -1451,7 +1451,8 @@ class MainWindow(QMainWindow):
 
     def _family_items(self, m: QMenu, files: list[fs.Entry], folders: list[fs.Entry]) -> None:
         """The family's own apps, when they're installed: text in PR7-W, music (and folders of it) in PR7-L,
-        archives in PR7-Z."""
+        archives in PR7-Z, PDFs in PR7-R (one tab each), a picture in PR7-P, a video or song in PR7-M (PR7-P and PR7-M
+        take one file: they browse its folder / play it as IrfanView and MPC-HC do)."""
         texts = [e.path for e in files if e.kind in ("text", "file")]
         music = [e.path for e in files if e.kind == "audio"] + [e.path for e in folders]
         archives = [e.path for e in files if archive.can_extract(e.name)]
@@ -1462,6 +1463,14 @@ class MainWindow(QMainWindow):
             items.append(("Edit Tags in PR7-L", lambda: family.launch("PR7-L", music)))
         if len(archives) == 1 and len(files) == 1 and not folders and family.find("PR7-Z"):
             items.append(("Open in PR7-Z", lambda: family.launch("PR7-Z", archives)))
+        pdfs = [e.path for e in files if e.name.lower().endswith(".pdf")]
+        if pdfs and len(pdfs) == len(files) and not folders and family.find("PR7-R"):
+            items.append(("Open in PR7-R", lambda: family.launch("PR7-R", pdfs)))
+        one = files[0] if len(files) == 1 and not folders else None
+        if one is not None and one.kind == "image" and family.find("PR7-P"):
+            items.append(("View in PR7-P", lambda: family.launch("PR7-P", [one.path])))
+        if one is not None and one.kind in ("audio", "video") and family.find("PR7-M"):
+            items.append(("Play in PR7-M", lambda: family.launch("PR7-M", [one.path])))
         if items:
             m.addSeparator()
             for text, fn in items:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- **More family links** in the right-click menu: **Open in PR7-R** for PDFs (one tab each), **View in PR7-P** for a picture, **Play in PR7-M** for a song or video, when those apps are installed.
+- **Check for Updates knows PR7-U**, the family installer. When it's installed, the update window has **Update All in PR7-U**, and a check by hand that finds PR7-E up to date offers to open PR7-U for the rest of the family.
+
 ## 1.1.0
 
 - **Check for updates**: a few seconds after starting (at most once a day) PR7-E asks GitHub whether a newer release is out; if so, a note offers What's new, Install Now (downloads with progress, installs over this copy, and PR7-E reopens), Later or Skip This Version. "Main menu > Check for Updates" checks by hand. Only the app's name is sent.

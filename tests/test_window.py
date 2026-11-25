@@ -1026,6 +1026,25 @@ def test_family_links(win, home, monkeypatch):
     items = menu_for(home / "Music" / "set.7z")
     items["Open in PR7-Z"].trigger()
     assert started[-1] == ("PR7-Z", [str(home / "Music" / "set.7z")])
+    items = menu_for(home / "Music" / "song.mp3")
+    assert "Play in PR7-M" not in items                # not installed
+    installed.update({"PR7-R", "PR7-P", "PR7-M"})
+    items = menu_for(home / "Music" / "song.mp3")
+    items["Play in PR7-M"].trigger()
+    assert started[-1] == ("PR7-M", [str(home / "Music" / "song.mp3")]) and "Edit Tags in PR7-L" in items
+    for name in ("a.pdf", "b.pdf", "pic.jpg", "clip.mkv"):
+        (home / "Music" / name).write_bytes(b"x")
+    w.go(str(home / "Music"))
+    items = menu_for(home / "Music" / "a.pdf", home / "Music" / "b.pdf")
+    items["Open in PR7-R"].trigger()
+    assert started[-1] == ("PR7-R", [str(home / "Music" / "a.pdf"), str(home / "Music" / "b.pdf")])
+    items = menu_for(home / "Music" / "pic.jpg")
+    items["View in PR7-P"].trigger()
+    assert started[-1] == ("PR7-P", [str(home / "Music" / "pic.jpg")]) and "Play in PR7-M" not in items
+    items = menu_for(home / "Music" / "clip.mkv")
+    assert "Play in PR7-M" in items and "Open in PR7-R" not in items
+    items = menu_for(home / "Music" / "pic.jpg", home / "Music" / "clip.mkv")
+    assert "View in PR7-P" not in items and "Play in PR7-M" not in items      # one file each
     installed.clear()                                  # not installed: not offered
     items = menu_for(home / "Music" / "song.mp3")
     assert "Edit Tags in PR7-L" not in items
