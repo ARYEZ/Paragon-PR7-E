@@ -19,6 +19,7 @@ from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMenu, QStackedWidget,
                                QVBoxLayout, QWidget)
 
+from . import finish
 from . import archive, family, fs, ops, places, remote, rename, servers, settings, system, theme, trash, winshell
 from .views import (local_paths, ConnectBar, EmptyState, EntryModel, FloatingStatus, GridView, HeaderBar, ListView, OperationsPopover,
                     SearchFilters, Sidebar, TabStrip, TrashBar)
@@ -1711,6 +1712,7 @@ class MainWindow(QMainWindow):
 
     def set_finish(self, name: str) -> None:
         theme.set_finish(name)
+        finish.set(theme.FINISH)                 # every family app follows (finish.py)
         settings.set("finish", theme.FINISH)
         app = QApplication.instance()
         app.setPalette(theme.palette())

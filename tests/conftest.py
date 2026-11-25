@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["PARAGON_FAMILY_FILE"] = os.path.join(__import__("tempfile").mkdtemp(prefix="family-"), "finish")  # never the real choice
 # Tests never touch the real Recycle Bin: PR7E_TRASH points Trash at a folder of its own (per test, below).
 os.environ["PR7E_TRASH"] = tempfile.mkdtemp(prefix="pr7e-trash-")
 # ...nor the real data folder (known hosts) or Windows Credential Manager.

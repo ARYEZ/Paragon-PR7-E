@@ -104,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setOrganizationName("Paragon")
     app.setApplicationName("PR7-E")
-    theme.set_finish(settings.get("finish", "obsidian"))
+    from . import finish
+    theme.set_finish(finish.start(settings.get("finish", "obsidian")))
     theme.load_fonts()
     app.setPalette(theme.palette())
     app.setStyleSheet(theme.stylesheet())
@@ -113,6 +114,11 @@ def main(argv: list[str] | None = None) -> int:
         app.setWindowIcon(QIcon(icon))
     from .main_window import MainWindow
     w = MainWindow(folders_from(argv) or None)
+    # one finish for the family: follow a switch made in another family app (finish.py)
+    from PySide6.QtCore import QTimer
+    _follow = QTimer(w)
+    _follow.timeout.connect(lambda: finish.follow(theme.FINISH, w.set_finish))
+    _follow.start(2000)
     w.show()
     from . import update_ui
     update_ui.start(w)  # a check for updates, once a day
