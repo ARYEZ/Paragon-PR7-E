@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- The family's list knows the newest apps (PR7-HB, PR7-FS, PR7-AR, PR7-WM), so links between apps and Check for Updates find them.
+
 ## 1.4.0
 
 - **Search with PR7-IS**: a folder's right-click menu, and the folder's empty space, start PR7-IS searching inside that folder (the folder is put in its search box as Everything's path word; type a name after it). Offered when PR7-IS is installed.
