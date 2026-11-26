@@ -77,6 +77,12 @@ Linux for tests. The owner writes Python; explain the why of changes.
   IAssocHandler::Invoke on the item's IDataObject); `open_with_dialog` (SHOpenWithDialog with "always"). Properties'
   Permissions use `system.owner` (GetNamedSecurityInfoW + LookupAccountSidW), `set_readonly` (os.chmod),
   `set_hidden` (SetFileAttributesW).
+- `pr7e/elevated.py` (no Qt): copies into folders only an administrator may change (Program Files). CopyJob sets
+  refused items aside (`needs_admin`: winerror 5, not 32 "in use") as `admin_ops`, asks once (`job.ask_admin` ->
+  `_ask("admin")`, Explorer's wording), then `job.elevate` = `run_elevated` starts PR7-E with ShellExecuteEx "runas" as
+  `--elevated-ops IN OUT`, which runs `perform`. Replace happens at copy time (so a refused replace can be redone); a
+  move between drives that hits a refusal becomes one move op (the original is never deleted first). Tests:
+  tests/test_admin_copy.py (`protected` fixture refuses writes until the stand-in elevation); Windows CI does it for real.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

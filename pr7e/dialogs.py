@@ -177,7 +177,7 @@ class ConfirmDialog(QDialog):
     def __init__(self, title: str, heading: str, text: str, button: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.resize(520, 0)
+        self.setFixedWidth(520)      # a fixed width lets the wrapped text get its full height (resize(520, 0) cut it)
         body = _shell(self, title.upper())
         h = QLabel(heading)
         h.setProperty("role", "heading")

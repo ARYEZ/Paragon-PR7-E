@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.3
+
+- **Copying into protected folders works, as in Explorer.** Program Files (the VST3 plugins folder, for one) refuses
+  ordinary programs. PR7-E used to skip those files with "Access is denied". Now it asks once, "You'll need to
+  provide administrator permission to copy to this folder", and on Continue (and Windows' own prompt) finishes the copy
+  with administrator rights. Replacing or merging over an installed plugin works the same way, and so do moves; a move
+  never deletes the original before the copy is done.
+- A file another program has open (a plugin loaded in a DAW) still says so: administrator rights wouldn't help.
+
 ## 1.4.2
 
 - The family list (`family.py`) knows the four newest Paragon apps: PR7-HX (hex editor), PR7-DB (SQLite browser),

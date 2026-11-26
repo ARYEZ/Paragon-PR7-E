@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from . import fs, trash
+from . import elevated, fs, trash
 
 CHUNK = 1 << 20
 
@@ -60,6 +60,9 @@ class Job:
     def __init__(self):
         self.title = ""
         self.ask = None                 # ask(Conflict) -> (action, apply_all) | ("rename", name) | None (cancel)
+        self.ask_admin = None           # ask_admin((count, folder)) -> True to continue as administrator
+        self.elevate = elevated.run_elevated   # tests: a stand-in that runs elevated.perform here
+        self.admin_ops: list[dict] = []  # what Windows refused ("Access is denied"), for administrator rights
         self.total_bytes = 0
         self.done_bytes = 0
         self.total_items = 0
@@ -222,7 +225,36 @@ class CopyJob(Job):
                 raise
             except OSError as e:
                 self.errors.append(_error(e))
+        self._as_admin()
         self._set_undo()
+
+    def _as_admin(self):
+        """What Windows refused for lack of administrator rights: ask once (Explorer's "You'll need to provide
+        administrator permission"), then do it all in PR7-E started with administrator rights."""
+        ops, self.admin_ops = self.admin_ops, []
+        if not ops:
+            return
+        refused = [f"{_quote(op['target'])}: Access is denied" for op in ops]
+        if self.ask_admin is None or not self.ask_admin((len(ops), self.dest)):
+            self.errors += refused
+            return
+        self.check()
+        done = self.elevate(ops)
+        if done is None:
+            self.errors += refused
+            self.errors.append("Administrator permission wasn't given, so these weren't copied.")
+            return
+        for op, err in zip(ops, done):
+            if err:
+                self.errors.append(f"{_quote(op['target'])}: {err}")
+                continue
+            if op["what"] == "move":
+                self.moved.append((op["target"], op["src"]))
+            elif op.get("top"):
+                self.created.append(op["target"])
+            b, f, _d = fs.tree_size([op["target"]])
+            self.done_bytes += b
+            self.done_items += f
 
     def _set_undo(self):
         if self.move and self.moved:
@@ -237,10 +269,11 @@ class CopyJob(Job):
 
     # ---------------------------------------------------------------- copying
     def _target(self, src: str, folder: str, name: str):
-        """(target path, merging?) or None to skip."""
+        """(target path, merging?, replacing?) or None to skip. A replace happens when the copy does (so a refused
+        one can be done with administrator rights)."""
         target = os.path.join(folder, name)
         if not os.path.lexists(target):
-            return target, False
+            return target, False, False
         if os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(target)):
             return None
         action = self.decide(src, target)
@@ -249,25 +282,36 @@ class CopyJob(Job):
         if isinstance(action, tuple):
             return self._target(src, folder, action[1])
         if action == "merge" and os.path.isdir(target) and os.path.isdir(src):
-            return target, True
-        _remove(target)  # replace
-        return target, False
+            return target, True, False
+        return target, False, True
 
-    def _copy(self, src: str, folder: str, name: str) -> str | None:
+    def _copy(self, src: str, folder: str, name: str, top: bool = True) -> str | None:
         got = self._target(src, folder, name)
         if got is None:
             if not os.path.isdir(src):
                 self.done_bytes += os.path.getsize(src)
                 self.done_items += 1
             return None
-        target, merging = got
-        if os.path.isdir(src) and not os.path.islink(src):
-            if not merging:
+        target, merging, replacing = got
+        try:
+            if replacing:
+                _remove(target)
+            if os.path.isdir(src) and not os.path.islink(src) and not merging:
                 os.makedirs(target)
+            elif not os.path.isdir(src) or os.path.islink(src):
+                self._copy_file(src, target)
+                return target
+        except PermissionError as e:
+            if not elevated.needs_admin(e):
+                raise
+            self.admin_ops.append({"what": "copy", "src": src, "target": target, "replace": replacing,
+                                   "merge": merging, "top": top})
+            return None
+        if os.path.isdir(src) and not os.path.islink(src):
             for child in sorted(os.listdir(src)):
                 self.check()
                 try:
-                    self._copy(os.path.join(src, child), target, child)
+                    self._copy(os.path.join(src, child), target, child, top=False)
                 except Cancelled:
                     raise
                 except OSError as e:
@@ -277,7 +321,6 @@ class CopyJob(Job):
             except OSError:
                 pass
             return None if merging else target
-        self._copy_file(src, target)
         return target
 
     def _copy_file(self, src: str, target: str) -> None:
@@ -325,20 +368,40 @@ class CopyJob(Job):
                     except OSError:
                         pass  # something was skipped: the folder stays
                     return
-                _remove(target)
-        if fast:
-            os.rename(src, target)
-            self.done_items += 1
-        else:
-            if os.path.isdir(src) and not os.path.islink(src):
-                os.makedirs(target)
-                for child in sorted(os.listdir(src)):
-                    self.check()
-                    self._copy(os.path.join(src, child), target, child)
-                shutil.copystat(src, target)
+                try:
+                    _remove(target)
+                except PermissionError as e:
+                    if not elevated.needs_admin(e):
+                        raise
+                    self.admin_ops.append({"what": "move", "src": src, "target": target, "replace": True})
+                    return
+        try:
+            if fast:
+                os.rename(src, target)
+                self.done_items += 1
             else:
-                self._copy_file(src, target)
-            _remove(src)
+                if os.path.isdir(src) and not os.path.islink(src):
+                    os.makedirs(target)
+                    before = len(self.admin_ops)
+                    for child in sorted(os.listdir(src)):
+                        self.check()
+                        self._copy(os.path.join(src, child), target, child, top=False)
+                    shutil.copystat(src, target)
+                    if len(self.admin_ops) > before:
+                        # part of it needs administrator rights: never delete the original before that's done;
+                        # the whole folder is moved there (what's already copied is merged over)
+                        del self.admin_ops[before:]
+                        self.admin_ops.append({"what": "move", "src": src, "target": target, "replace": False,
+                                               "merge": True})
+                        return
+                else:
+                    self._copy_file(src, target)
+                _remove(src)
+        except PermissionError as e:
+            if not elevated.needs_admin(e) or os.path.lexists(target) and not fast:
+                raise
+            self.admin_ops.append({"what": "move", "src": src, "target": target, "replace": False})
+            return
         self.moved.append((target, src))
 
     def _count_skipped(self, src, fast):

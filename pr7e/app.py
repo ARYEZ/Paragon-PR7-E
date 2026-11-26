@@ -89,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         from . import __version__
         print(__version__)
         return 0
+    if argv[:1] == ["--elevated-ops"] and len(argv) == 3:   # started with administrator rights by elevated.py
+        from . import elevated
+        return elevated.main(argv[1], argv[2])
     if argv[:1] == ["--check"] and len(argv) == 3:
         return check(argv[1], argv[2])
     if argv[:1] == ["--selftest"] and len(argv) == 3:

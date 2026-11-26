@@ -2120,6 +2120,16 @@ class MainWindow(QMainWindow):
         if kind == "conflict":
             dlg = dialogs.ConflictDialog(payload, self)
             return dlg.answer() if dlg.exec() else None
+        if kind == "admin":                    # (count, folder): Explorer's "Destination Folder Access Denied"
+            count, folder = payload
+            what = "this item" if count == 1 else f"these {count} items"
+            import ntpath
+            dlg = dialogs.ConfirmDialog("Permission", "You\u2019ll need to provide administrator "
+                                        "permission to copy to this folder",
+                                        f"\u201c{ntpath.basename(folder.rstrip(chr(92) + '/')) or folder}\u201d is "
+                                        f"protected by Windows. Continue to copy {what} with administrator rights "
+                                        "(Windows will ask).", "Continue", self)
+            return bool(dlg.exec())
         if kind == "name":
             if payload.get("bookmark"):
                 from PySide6.QtWidgets import QInputDialog

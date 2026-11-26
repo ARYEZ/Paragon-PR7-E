@@ -54,6 +54,7 @@ class JobRunner(QObject):
 
     def start(self, job, sync: bool = False) -> None:
         job.ask = lambda conflict: self.asker.ask("conflict", conflict)
+        job.ask_admin = lambda what: self.asker.ask("admin", what)
         if hasattr(job, "ask_password"):
             job.ask_password = lambda name: self.asker.ask("password", name)
         self.running.append(job)
