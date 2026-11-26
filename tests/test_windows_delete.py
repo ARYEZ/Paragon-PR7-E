@@ -7,6 +7,8 @@ import pytest
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
+from pr7e.main_window import load_prefs
+
 pytestmark = pytest.mark.skipif(sys.platform != "win32" or not os.environ.get("CI"),
                                 reason="the real Recycle Bin: Windows CI only")
 
@@ -94,6 +96,7 @@ def test_a_folder_goes_to_the_recycle_bin(win, folder, real_bin, before):
         win.new_tab(str(f), switch=False)
         spin(1)
     elif before == "expanded":
+        win.set_prefs({**load_prefs(), "expand_folders": True})    # Preferences > Expandable folders
         win.set_view("list")
         win.expand_folder(win.tab, row(win, f), True)
         spin(1)
@@ -101,13 +104,17 @@ def test_a_folder_goes_to_the_recycle_bin(win, folder, real_bin, before):
         win.new_tab(str(f / "inside"), switch=False)
         spin(1)
     elif before == "subfolder_expanded":
+        win.set_prefs({**load_prefs(), "expand_folders": True})
         win.set_view("list")
         win.expand_folder(win.tab, row(win, f), True)
         spin(1)
         win.expand_folder(win.tab, row(win, f / "inside"), True)
         spin(1)
-    if before != "nothing" and before != "browsed_inside":
-        assert win.watcher.directories(), "the set-up watches nothing"
+    held = {"open_in_another_tab": f, "expanded": f, "subfolder_in_another_tab": f / "inside",
+            "subfolder_expanded": f / "inside", "subfolder_tab_delete_for_good": f / "inside"}.get(before)
+    if held is not None:      # the set-up really watches what it means to
+        assert os.path.normcase(str(held)) in {os.path.normcase(d) for d in win.watcher.directories()}, \
+            win.watcher.directories()
     if before == "subfolder_tab_delete_for_good":
         win.tab.select_paths([str(f)])
         win.delete_selected()
