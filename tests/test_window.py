@@ -1064,3 +1064,56 @@ def test_family_lookup_is_windows_only():
     if sys.platform != "win32":
         assert family.find("PR7-W") is None and not family.pr7e_for_folders()
     assert family.find("not-a-family-app") is None
+
+
+@pytest.mark.parametrize("how", ["trash", "delete", "move", "rename"])
+def test_folders_inside_are_not_watched_while_they_move(win, home, monkeypatch, how):
+    """Windows refuses to move or delete a folder while a handle is open inside it, and Qt's watcher holds one on each
+    watched folder (here: a subfolder open in another tab). PR7-E stops watching them for the job, then watches again
+    what is still there."""
+    from pr7e import ops, trash
+    music = home / "Music"
+    inner = music / "Paragon" / "ELSEWORLD"
+    w = win
+    w.new_tab(str(inner), switch=False)
+    QApplication.processEvents()
+    assert any(os.path.normcase(d) == os.path.normcase(str(inner)) for d in w.watcher.directories())
+    seen = []
+
+    def watched_now():
+        seen.append([d for d in w.watcher.directories() if os.path.normcase(d).startswith(os.path.normcase(str(music)))])
+    if how == "trash":
+        real = trash.send
+        monkeypatch.setattr(trash, "send", lambda p, b=None: (watched_now(), real(p, b))[1])
+        w.run(ops.TrashJob([str(music)]))
+    elif how == "delete":
+        real = ops._remove
+        monkeypatch.setattr(ops, "_remove", lambda p: (watched_now(), real(p))[1])
+        w.run(ops.DeleteJob([str(music)]))
+    elif how == "move":
+        real = os.rename
+        monkeypatch.setattr(os, "rename", lambda a, b, *k, **kw: (watched_now(), real(a, b, *k, **kw))[1])
+        w.run(ops.CopyJob([str(music)], str(home / "Documents"), move=True))
+    else:
+        real = os.rename
+        monkeypatch.setattr(os, "rename", lambda a, b, *k, **kw: (watched_now(), real(a, b, *k, **kw))[1])
+        w.run(ops.RenameJob(str(music), "Tunes"))
+    w.runner.wait()
+    QApplication.processEvents()
+    assert seen and seen[0] == [], seen          # nothing in or under the folder was watched while it went
+    assert not music.exists()
+    assert not w.unwatched                       # and nothing is held back afterwards
+    if how in ("move", "rename"):                # the other tab's folder moved with it: still watched where it is now
+        assert all(os.path.isdir(d) for d in w.watcher.directories())
+
+
+def test_other_jobs_keep_their_watches(win, home):
+    from pr7e import ops
+    w = win
+    w.new_tab(str(home / "Music"), switch=False)
+    QApplication.processEvents()
+    before = set(w.watcher.directories())
+    w.run(ops.CopyJob([str(home / "Documents" / "notes.txt")], str(home / "Pictures")))
+    w.runner.wait()
+    QApplication.processEvents()
+    assert set(w.watcher.directories()) >= before and not w.unwatched

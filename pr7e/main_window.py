@@ -179,6 +179,24 @@ class Tab(QWidget):
             self.view.scrollTo(first)
 
 
+def _at_or_inside(path: str, top: str) -> bool:
+    p, t = os.path.normcase(os.path.abspath(path)), os.path.normcase(os.path.abspath(top))
+    return p == t or p.startswith(t.rstrip(os.sep) + os.sep)
+
+
+def _moves_away(job) -> list[str]:
+    """The local items a job deletes, moves or renames (their folders mustn't be watched meanwhile)."""
+    if isinstance(job, (ops.TrashJob, ops.DeleteJob)):
+        return list(job.paths)
+    if isinstance(job, ops.CopyJob) and job.move:
+        return list(job.sources)
+    if isinstance(job, ops.RenameJob):
+        return [job.path]
+    if isinstance(job, rename.BatchRenameJob):
+        return [p for p, _n in job.pairs]
+    return []
+
+
 class MainWindow(QMainWindow):
     def __init__(self, folders: list[str] | None = None, parent=None):
         super().__init__(parent)
@@ -213,6 +231,7 @@ class MainWindow(QMainWindow):
         self.prefs = load_prefs()
         self.watcher = QFileSystemWatcher(self)
         self.watcher.directoryChanged.connect(self._dir_changed)
+        self.unwatched: dict[int, list[str]] = {}   # running job -> what it moves away (not watched meanwhile)
         self.reload_timer = QTimer(self, singleShot=True, interval=250)
         self.reload_timer.timeout.connect(self._reload_dirty)
         self.dirty: set[str] = set()
@@ -1063,6 +1082,9 @@ class MainWindow(QMainWindow):
         for t in self.tabs:  # open folders in the list view are watched too
             if t.model.expandable:
                 want |= {e.path for e in t.model.rows if e.is_dir and os.path.normcase(e.path) in t.expanded}
+        held = [p for paths in self.unwatched.values() for p in paths]
+        if held:
+            want = {p for p in want if not any(_at_or_inside(p, h) for h in held)}
         have = set(self.watcher.directories())
         if have - want:
             self.watcher.removePaths(list(have - want))
@@ -1111,6 +1133,15 @@ class MainWindow(QMainWindow):
         """Start a job; `origin` is "undo" / "redo" for jobs that came from those stacks."""
         job.origin = origin
         job.began = time.monotonic()
+        moved = _moves_away(job)
+        if moved:
+            # Windows won't move or delete a folder while a handle is open inside it, and Qt's watcher holds one on
+            # every watched folder (another tab's folder, an expanded one). Windows calls that "access denied" and
+            # asks for administrator permission; Explorer holds no such handle. So: stop watching them first.
+            self.unwatched[id(job)] = moved
+            gone = [d for d in self.watcher.directories() if any(_at_or_inside(d, m) for m in moved)]
+            if gone:
+                self.watcher.removePaths(gone)
         self.runner.start(job, sync=self.sync_jobs)
         if job in self.runner.running:
             self.tick.start()
@@ -1154,6 +1185,8 @@ class MainWindow(QMainWindow):
         self.popover.raise_()
 
     def _job_done(self, job: ops.Job):
+        if self.unwatched.pop(id(job), None) is not None:
+            self._watch()             # watch again whatever is still there
         if self.popover.isVisible() or time.monotonic() - getattr(job, "began", 0) >= self.OPEN_AFTER:
             self.finished_ops.append((job, time.monotonic()))
             self.tick.start()

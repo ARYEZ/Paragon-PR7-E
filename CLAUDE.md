@@ -83,6 +83,9 @@ Linux for tests. The owner writes Python; explain the why of changes.
   `--elevated-ops IN OUT`, which runs `perform`. Replace happens at copy time (so a refused replace can be redone); a
   move between drives that hits a refusal becomes one move op (the original is never deleted first). Tests:
   tests/test_admin_copy.py (`protected` fixture refuses writes until the stand-in elevation); Windows CI does it for real.
+- Watching folders (`_watch`: every tab's folder and the expanded ones): Qt's watcher holds a handle on each, and
+  Windows refuses to move / delete a folder with a handle open inside it ("access denied", the shell's administrator
+  box). `run` unwatches everything at or under a job's `_moves_away` items until `_job_done`. CI: test_windows_delete.
 - `pr7e/workers.py`: Asker (worker threads ask the GUI), JobRunner, Loader (thumbnails via QImageReader and folder
   counts on a QThreadPool, cached), Search (thread; results queued to the window).
 - `pr7e/views.py`: EntryModel (plain Python list model, **never QStandardItemModel**: PR7-Z's crash), grid / list

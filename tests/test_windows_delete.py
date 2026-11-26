@@ -69,7 +69,8 @@ def trash_it(w, f):
     return w.messages
 
 
-@pytest.mark.parametrize("before", ["nothing", "browsed_inside", "open_in_another_tab", "expanded"])
+@pytest.mark.parametrize("before", ["nothing", "browsed_inside", "open_in_another_tab", "expanded",
+                                    "subfolder_in_another_tab", "subfolder_expanded", "subfolder_tab_delete_for_good"])
 def test_a_folder_goes_to_the_recycle_bin(win, folder, real_bin, before):
     root, f = folder
     if before == "browsed_inside":           # thumbnails and counts of what's inside were loaded
@@ -84,21 +85,44 @@ def test_a_folder_goes_to_the_recycle_bin(win, folder, real_bin, before):
         entry = next(e for e in win.tab.model.rows if e.path == str(f))
         win.expand_folder(win.tab, entry, True)
         spin(1)
+    elif before in ("subfolder_in_another_tab", "subfolder_tab_delete_for_good"):   # the case that failed
+        win.new_tab(str(f / "inside"), switch=False)
+        spin(1)
+    elif before == "subfolder_expanded":
+        win.set_view("list")
+        entry = next(e for e in win.tab.model.rows if e.path == str(f))
+        win.expand_folder(win.tab, entry, True)
+        spin(1)
+        inner = next(e for e in win.tab.model.rows if e.path == str(f / "inside"))
+        win.expand_folder(win.tab, inner, True)
+        spin(1)
+    if before != "nothing" and before != "browsed_inside":
+        assert win.watcher.directories(), "the set-up watches nothing"
+    if before == "subfolder_tab_delete_for_good":
+        win.tab.select_paths([str(f)])
+        win.delete_selected()
+        win.runner.wait()
+        spin()
+        assert not f.exists(), f"{before}: still there; PR7-E said {win.messages}"
+        return
     messages = trash_it(win, f)
     assert not f.exists(), f"{before}: still there; PR7-E said {messages}"
 
 
-@pytest.mark.parametrize("watched", ["the folder", "a folder inside", "nothing"])
+@pytest.mark.parametrize("watched", ["the folder", "a folder inside, released first", "nothing"])
 def test_a_watched_folder_and_the_recycle_bin(qapp, folder, real_bin, watched):
-    """Qt's QFileSystemWatcher on its own (no window): does a watch on the folder or inside it stop Windows?"""
+    """Qt's QFileSystemWatcher on its own. A watch on a folder inside stops Windows (found on CI: "can't be put in the
+    Trash", Windows' own "administrator permission" box for the user); removing the watch first lets it through."""
     from PySide6.QtCore import QFileSystemWatcher
     _root, f = folder
     w = QFileSystemWatcher()
     if watched == "the folder":
         w.addPath(str(f))
-    elif watched == "a folder inside":
+    elif watched != "nothing":
         w.addPath(str(f / "inside"))
     spin(0.3)
+    if watched.endswith("released first"):
+        w.removePaths(w.directories())
     from pr7e import trash
     try:
         real_bin.send(str(f))

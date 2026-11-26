@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.5
+
+- Deleting, moving or renaming a folder no longer asks for administrator permission when a folder inside it is open
+  in another tab or expanded in the list view. PR7-E watches those folders for changes, and Windows refuses to move a
+  folder while anything inside it is held open (it calls that "access denied"); PR7-E now stops watching them for
+  the operation and watches again afterwards, so it deletes as Explorer does.
+
 ## 1.4.4
 
 - The family list (`family.py`) knows the three newest Paragon apps: PR7-HW (hardware information), PR7-BK
