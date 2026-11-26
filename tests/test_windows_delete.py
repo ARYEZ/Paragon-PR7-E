@@ -59,6 +59,19 @@ def spin(seconds=0.5):
         time.sleep(0.01)
 
 
+def row(w, path, timeout=10):
+    """The list's row for `path`, once it is there (an expanded folder's contents load in the background)."""
+    import time
+    want = os.path.normcase(str(path))
+    end = time.time() + timeout
+    while time.time() < end:
+        for e in w.tab.model.rows:
+            if os.path.normcase(e.path) == want:
+                return e
+        spin(0.05)
+    raise AssertionError(f"no row for {path}: {[e.path for e in w.tab.model.rows]}")
+
+
 def trash_it(w, f):
     w.go(str(f.parent), tab=w.tab)
     spin()
@@ -82,19 +95,16 @@ def test_a_folder_goes_to_the_recycle_bin(win, folder, real_bin, before):
         spin(1)
     elif before == "expanded":
         win.set_view("list")
-        entry = next(e for e in win.tab.model.rows if e.path == str(f))
-        win.expand_folder(win.tab, entry, True)
+        win.expand_folder(win.tab, row(win, f), True)
         spin(1)
     elif before in ("subfolder_in_another_tab", "subfolder_tab_delete_for_good"):   # the case that failed
         win.new_tab(str(f / "inside"), switch=False)
         spin(1)
     elif before == "subfolder_expanded":
         win.set_view("list")
-        entry = next(e for e in win.tab.model.rows if e.path == str(f))
-        win.expand_folder(win.tab, entry, True)
+        win.expand_folder(win.tab, row(win, f), True)
         spin(1)
-        inner = next(e for e in win.tab.model.rows if e.path == str(f / "inside"))
-        win.expand_folder(win.tab, inner, True)
+        win.expand_folder(win.tab, row(win, f / "inside"), True)
         spin(1)
     if before != "nothing" and before != "browsed_inside":
         assert win.watcher.directories(), "the set-up watches nothing"
