@@ -19,6 +19,7 @@ import json
 import os
 import shutil
 import stat
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -72,6 +73,15 @@ def perform(ops: list[dict]) -> list[str | None]:
                 _remove(target)
             if op["what"] == "copy":
                 _copy_into(src, target, bool(op.get("merge")))
+            elif op["what"] == "trash":                 # to the Recycle Bin (the same user's: same SID)
+                from . import trash
+                trash.send(src)
+            elif op["what"] == "delete":
+                _remove(src)
+            elif op["what"] == "rename":
+                os.rename(src, target)
+            elif op["what"] == "mkdir":
+                os.mkdir(target)
             elif op["what"] == "move":
                 try:
                     os.rename(src, target)
@@ -93,6 +103,32 @@ def own_command() -> tuple[str, list[str]]:
     return sys.executable, ["-m", "pr7e"]
 
 
+def exchange_folder() -> str:
+    """The folder both PR7-Es share: a plain folder in Temp, inheriting Temp's access (this user by name).
+
+    Not tempfile.mkdtemp: its mode 0o700 gives, since Python's CVE-2024-4030 fix, a protected list of SYSTEM,
+    Administrators and OWNER RIGHTS only, and a file the elevated PR7-E writes is owned by Administrators, so this
+    (unelevated) PR7-E couldn't read the results and reported "permission wasn't given" after the work was done."""
+    while True:
+        folder = os.path.join(tempfile.gettempdir(), f"pr7e-admin-{secrets.token_hex(8)}")
+        try:
+            os.mkdir(folder)
+            return folder
+        except FileExistsError:
+            continue
+
+
+def check_done(ops: list[dict]) -> list[str | None]:
+    """What the disk shows, when the elevated PR7-E ran but its results can't be read: done = the target is there
+    (and, for a move, the original is gone)."""
+    out: list[str | None] = []
+    for op in ops:
+        there = os.path.lexists(op["target"])
+        left = op["what"] == "move" and os.path.lexists(op["src"])
+        out.append(None if there and not left else "not done (Windows refused it even with administrator rights)")
+    return out
+
+
 def run_elevated(ops: list[dict], timeout: float = 3600) -> list[str | None] | None:
     """Run `perform` in PR7-E started with administrator rights (Windows asks). None when the prompt was refused or
     Windows couldn't start it."""
@@ -100,7 +136,7 @@ def run_elevated(ops: list[dict], timeout: float = 3600) -> list[str | None] | N
         return None
     import ctypes
     from ctypes import wintypes
-    folder = tempfile.mkdtemp(prefix="pr7e-admin-")
+    folder = exchange_folder()
     src, out = os.path.join(folder, "ops.json"), os.path.join(folder, "done.json")
     with open(src, "w", encoding="utf-8") as f:
         json.dump(ops, f)
@@ -117,15 +153,21 @@ def run_elevated(ops: list[dict], timeout: float = 3600) -> list[str | None] | N
     info = SHELLEXECUTEINFOW(cbSize=ctypes.sizeof(SHELLEXECUTEINFOW), fMask=SEE_MASK_NOCLOSEPROCESS, lpVerb="runas",
                              lpFile=exe, lpParameters=params, nShow=SW_HIDE)
     try:
-        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
-            return None                         # ERROR_CANCELLED (1223): No on Windows' prompt
-        ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, int(timeout * 1000))
-        ctypes.windll.kernel32.CloseHandle(info.hProcess)
-        with open(out, encoding="utf-8") as f:
-            got = json.load(f)
-        return got if isinstance(got, list) and len(got) == len(ops) else None
-    except (OSError, ValueError):
-        return None
+        try:
+            if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
+                return None                     # ERROR_CANCELLED (1223): No on Windows' prompt
+            ctypes.windll.kernel32.WaitForSingleObject(info.hProcess, int(timeout * 1000))
+            ctypes.windll.kernel32.CloseHandle(info.hProcess)
+        except OSError:
+            return None
+        try:
+            with open(out, encoding="utf-8") as f:
+                got = json.load(f)
+            if isinstance(got, list) and len(got) == len(ops):
+                return got
+        except (OSError, ValueError):
+            pass
+        return check_done(ops)                  # it ran (Windows said yes): the disk says what it did
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 

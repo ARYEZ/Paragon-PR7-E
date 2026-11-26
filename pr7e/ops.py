@@ -75,6 +75,23 @@ class Job:
         self._cancel = threading.Event()
         self._all: str | None = None    # the answer given "for all"
 
+    def _admin(self, ops: list[dict], verb: str, folder: str) -> list[str | None] | bool | None:
+        """Explorer's "You'll need to provide administrator permission to <verb>": ask once, then do `ops` in PR7-E
+        started with administrator rights. False: PR7-E's question was declined; None: Windows' prompt was."""
+        what = (len(ops), folder) if verb == "copy" else (len(ops), folder, verb)
+        if not ops or self.ask_admin is None or not self.ask_admin(what):
+            return False
+        self.check()
+        return self.elevate(ops)
+
+    def _as_admin_or_raise(self, e: OSError, op: dict, verb: str, folder: str) -> None:
+        """One refused operation: done as administrator, or the original "Access is denied" raised again."""
+        done = self._admin([op], verb, folder)
+        if not done:
+            raise e
+        if done[0]:
+            raise OSError(0, done[0], op["target"])
+
     # ------------------------------------------------------------------ what the window shows
     def cancel(self) -> None:
         self._cancel.set()
@@ -235,14 +252,11 @@ class CopyJob(Job):
         if not ops:
             return
         refused = [f"{_quote(op['target'])}: Access is denied" for op in ops]
-        if self.ask_admin is None or not self.ask_admin((len(ops), self.dest)):
+        done = self._admin(ops, "copy", self.dest)
+        if not done:
             self.errors += refused
-            return
-        self.check()
-        done = self.elevate(ops)
-        if done is None:
-            self.errors += refused
-            self.errors.append("Administrator permission wasn't given, so these weren't copied.")
+            if done is None:
+                self.errors.append("Administrator permission wasn't given, so these weren't copied.")
             return
         for op, err in zip(ops, done):
             if err:
@@ -463,19 +477,36 @@ class TrashJob(Job):
         self.untrashable: list[str] = []
 
     def work(self):
+        refused = []
         for p in self.paths:
             self.check()
             try:
                 self.items.append(trash.send(p))
-            except trash.TrashError as e:
-                if os.path.lexists(p):
-                    self.untrashable.append(p)
-                else:
-                    self.errors.append(str(e))
             except OSError as e:
-                self.untrashable.append(p) if os.path.lexists(p) else self.errors.append(_error(e))
+                if elevated.needs_admin(e) and os.path.lexists(p):
+                    refused.append(p)            # a protected folder (Program Files): with administrator rights
+                elif isinstance(e, trash.TrashError):
+                    self.untrashable.append(p) if os.path.lexists(p) else self.errors.append(str(e))
+                else:
+                    self.untrashable.append(p) if os.path.lexists(p) else self.errors.append(_error(e))
             self.changed.add(os.path.dirname(p))
             self.done_items += 1
+        if refused:
+            done = self._admin([{"what": "trash", "src": p, "target": p} for p in refused], "delete",
+                               os.path.dirname(refused[0]))
+            if not done:
+                self.errors += [f"{_quote(p)}: Access is denied" for p in refused]
+                if done is None:
+                    self.errors.append("Administrator permission wasn't given, so these weren't moved to Trash.")
+            else:
+                listed = trash.items()
+                for p, err in zip(refused, done):
+                    if err:
+                        self.errors.append(f"{_quote(p)}: {err}")
+                        continue
+                    mine = [i for i in listed if os.path.normcase(i.original) == os.path.normcase(p)]
+                    if mine:
+                        self.items.append(max(mine, key=lambda i: i.deleted))
         if self.items:
             self.undo = RestoreJob(self.items, label=self.undo_label)
 
@@ -518,14 +549,27 @@ class DeleteJob(Job):
         self.total_items = len(self.paths)
 
     def work(self):
+        refused = []
         for p in self.paths:
             self.check()
             try:
                 _remove(p)
                 self.changed.add(os.path.dirname(p))
             except OSError as e:
-                self.errors.append(_error(e))
+                refused.append(p) if elevated.needs_admin(e) else self.errors.append(_error(e))
             self.done_items += 1
+        if refused:
+            done = self._admin([{"what": "delete", "src": p, "target": p} for p in refused], "delete",
+                               os.path.dirname(refused[0]))
+            if not done:
+                self.errors += [f"{_quote(p)}: Access is denied" for p in refused]
+                if done is None:
+                    self.errors.append("Administrator permission wasn't given, so these weren't deleted.")
+                return
+            for p, err in zip(refused, done):
+                self.changed.add(os.path.dirname(p))
+                if err:
+                    self.errors.append(f"{_quote(p)}: {err}")
 
 
 class TrashDeleteJob(Job):
@@ -571,7 +615,12 @@ class RenameJob(Job):
         problem = fs.name_problem(self.new_name, folder, os.path.isdir(self.path), os.path.basename(self.path))
         if problem or not self.new_name.strip():
             raise OSError(0, problem or "The name is empty.", self.path)
-        os.rename(self.path, self.new_path)
+        try:
+            os.rename(self.path, self.new_path)
+        except OSError as e:
+            if not elevated.needs_admin(e):
+                raise
+            self._as_admin_or_raise(e, {"what": "rename", "src": self.path, "target": self.new_path}, "rename", folder)
         self.changed.add(folder)
         self.done_items = 1
         self.undo = RenameJob(self.new_path, os.path.basename(self.path))
@@ -588,7 +637,13 @@ class NewFolderJob(Job):
         self.total_items = 1
 
     def work(self):
-        os.mkdir(self.path)
+        try:
+            os.mkdir(self.path)
+        except OSError as e:
+            if not elevated.needs_admin(e):
+                raise
+            self._as_admin_or_raise(e, {"what": "mkdir", "src": self.path, "target": self.path}, "create",
+                                    os.path.dirname(self.path))
         self.changed.add(os.path.dirname(self.path))
         self.done_items = 1
         self.undo = TrashJob([self.path], label="Create Folder")

@@ -81,7 +81,11 @@ Linux for tests. The owner writes Python; explain the why of changes.
   refused items aside (`needs_admin`: winerror 5, not 32 "in use") as `admin_ops`, asks once (`job.ask_admin` ->
   `_ask("admin")`, Explorer's wording), then `job.elevate` = `run_elevated` starts PR7-E with ShellExecuteEx "runas" as
   `--elevated-ops IN OUT`, which runs `perform`. Replace happens at copy time (so a refused replace can be redone); a
-  move between drives that hits a refusal becomes one move op (the original is never deleted first). Tests:
+  move between drives that hits a refusal becomes one move op (the original is never deleted first). Trash / Delete /
+  Rename / New Folder use the same `Job._admin` (ops trash, delete, rename, mkdir; `trash.may_delete` probes DELETE
+  before SHFileOperationW, whose own elevation box can't work from PR7-E). The two processes share
+  `elevated.exchange_folder()` (never mkdtemp: its 0o700 ACL is OWNER RIGHTS, unreadable across the UAC split);
+  unreadable results -> `check_done` reads the disk. Tests:
   tests/test_admin_copy.py (`protected` fixture refuses writes until the stand-in elevation); Windows CI does it for real.
 - Watching folders (`_watch`: every tab's folder and the expanded ones): Qt's watcher holds a handle on each, and
   Windows refuses to move / delete a folder with a handle open inside it ("access denied", the shell's administrator

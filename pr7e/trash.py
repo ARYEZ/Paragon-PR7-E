@@ -23,6 +23,35 @@ class TrashError(OSError):
     pass
 
 
+class TrashAccessDenied(TrashError, PermissionError):
+    """Windows refuses: the item is in a protected folder (Program Files). PR7-E then asks for administrator rights
+    (elevated.needs_admin recognises it as error 5), as Explorer does."""
+
+    def __init__(self, path: str):
+        super().__init__(13, "Access is denied", path, 5)   # EACCES; winerror 5 on Windows (ignored elsewhere)
+
+
+def may_delete(path: str) -> bool:
+    """Windows: whether this account may delete the item (it opens it asking for DELETE). Checked before the Recycle
+    Bin call, which would otherwise show Windows' own administrator box, one that can't work from PR7-E."""
+    if sys.platform != "win32":
+        return True
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                              wintypes.DWORD, wintypes.HANDLE]
+    k.CreateFileW.restype = wintypes.HANDLE
+    DELETE, SHARE_ALL, OPEN_EXISTING = 0x10000, 0x7, 3
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT = 0x02000000, 0x00200000
+    h = k.CreateFileW(path, DELETE, SHARE_ALL, None, OPEN_EXISTING,
+                      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
+    if h in (None, wintypes.HANDLE(-1).value):
+        return ctypes.get_last_error() != 5           # only "Access is denied" means no; anything else: try
+    k.CloseHandle(h)
+    return True
+
+
 @dataclass
 class TrashItem:
     name: str
@@ -175,11 +204,15 @@ class WindowsTrash:
         FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_WANTNUKEWARNING = \
             3, 0x4, 0x10, 0x40, 0x400, 0x4000
         path = os.path.abspath(path)
+        if not may_delete(path):
+            raise TrashAccessDenied(path)
         before = time.time() - 2
         op = SHFILEOPSTRUCTW(None, FO_DELETE, path + "\x00", None,
                              FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO | FOF_NOERRORUI | FOF_WANTNUKEWARNING,
                              False, None, None)
         res = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+        if res in (5, 0x78) and os.path.lexists(path):     # ERROR_ACCESS_DENIED, DE_ACCESSDENIEDSRC
+            raise TrashAccessDenied(path)
         if res or op.fAnyOperationsAborted or os.path.lexists(path):
             raise TrashError(f"“{os.path.basename(path)}” can’t be put in the Trash")
         found = [i for i in self.items() if os.path.normcase(i.original) == os.path.normcase(path)

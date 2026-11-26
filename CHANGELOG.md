@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.6
+
+- In folders only an administrator may change (Program Files, its VST3 folder), Delete, Delete Permanently, Rename
+  and New Folder now ask for administrator permission once and do it, as Explorer does. Before, only copying and
+  moving could, and deleting there ended in "Access is denied".
+- Copying or moving with administrator permission no longer says "Administrator permission wasn't given" after the
+  work was done: the folder the two PR7-E processes share was one Python makes private, so the normal PR7-E couldn't
+  read what the administrator one wrote. If the results still can't be read, PR7-E checks the disk instead.
+- Windows' own "administrator permission" box no longer appears from the Recycle Bin call: PR7-E checks first
+  whether Windows lets it delete the item, and asks its own question when it doesn't.
+
 ## 1.4.5
 
 - Deleting, moving or renaming a folder no longer asks for administrator permission when a folder inside it is open

@@ -2153,15 +2153,20 @@ class MainWindow(QMainWindow):
         if kind == "conflict":
             dlg = dialogs.ConflictDialog(payload, self)
             return dlg.answer() if dlg.exec() else None
-        if kind == "admin":                    # (count, folder): Explorer's "Destination Folder Access Denied"
-            count, folder = payload
-            what = "this item" if count == 1 else f"these {count} items"
+        if kind == "admin":                    # (count, folder[, verb]): Explorer's "... Access Denied" box
+            count, folder, verb = (*payload, "copy")[:3]
             import ntpath
-            dlg = dialogs.ConfirmDialog("Permission", "You\u2019ll need to provide administrator "
-                                        "permission to copy to this folder",
-                                        f"\u201c{ntpath.basename(folder.rstrip(chr(92) + '/')) or folder}\u201d is "
-                                        f"protected by Windows. Continue to copy {what} with administrator rights "
-                                        "(Windows will ask).", "Continue", self)
+            place = ntpath.basename(folder.rstrip(chr(92) + '/')) or folder
+            what = "this item" if count == 1 else f"these {count} items"
+            heading, action = {
+                "copy": ("to copy to this folder", f"copy {what}"),
+                "delete": ("to delete " + ("this item" if count == 1 else "these items"), f"delete {what}"),
+                "rename": ("to rename this item", "rename it"),
+                "create": ("to create a folder here", "create the folder"),
+            }[verb]
+            dlg = dialogs.ConfirmDialog("Permission", f"You\u2019ll need to provide administrator permission {heading}",
+                                        f"\u201c{place}\u201d is protected by Windows. Continue to {action} with "
+                                        "administrator rights (Windows will ask).", "Continue", self)
             return bool(dlg.exec())
         if kind == "name":
             if payload.get("bookmark"):

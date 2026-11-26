@@ -179,3 +179,91 @@ def test_the_window_asks_explorers_question(qapp, tmp_path, protected, clean_set
         w.runner.start(ops.CopyJob([str(src)], str(folder)), sync=True)
     assert asked == [(1, str(folder))] and (folder / "Paragon PR7-T.vst3" / "Contents" / "moduleinfo.json").exists()
     w.close()
+
+
+def test_what_the_disk_shows_when_the_results_cant_be_read(tmp_path):
+    """The elevated PR7-E ran (Windows said yes) but its results file couldn't be read: the disk decides."""
+    (tmp_path / "moved here").mkdir()
+    (tmp_path / "copied").write_bytes(b"x")
+    (tmp_path / "still here").write_bytes(b"x")
+    (tmp_path / "moved too").write_bytes(b"x")
+    got = elevated.check_done([
+        {"what": "move", "src": str(tmp_path / "gone"), "target": str(tmp_path / "moved here")},
+        {"what": "copy", "src": str(tmp_path / "a"), "target": str(tmp_path / "copied")},
+        {"what": "copy", "src": str(tmp_path / "a"), "target": str(tmp_path / "missing")},
+        {"what": "move", "src": str(tmp_path / "still here"), "target": str(tmp_path / "moved too")},
+    ])
+    assert got[0] is None and got[1] is None and got[2] and got[3]
+
+
+def test_the_exchange_folder_is_a_plain_temp_folder():
+    import tempfile
+    f = elevated.exchange_folder()
+    try:
+        assert os.path.isdir(f) and os.path.dirname(f) == tempfile.gettempdir()
+        assert os.path.basename(f).startswith("pr7e-admin-")
+    finally:
+        shutil.rmtree(f, ignore_errors=True)
+
+
+def installed(folder, state, name="Behemoth Bass.vst3"):
+    """A plugin already in the protected folder (put there "as administrator")."""
+    state["admin"] = True
+    try:
+        b = folder / name
+        (b / "Contents").mkdir(parents=True)
+        (b / "Contents" / "moduleinfo.json").write_text("{}")
+    finally:
+        state["admin"] = False
+    return b
+
+
+def test_delete_to_trash_in_a_protected_folder_asks_once(tmp_path, protected):
+    """The user's Program Files VST3 folder: Explorer asks for administrator permission and deletes; so does PR7-E."""
+    from pr7e import trash
+    folder, state, elevate = protected
+    b = installed(folder, state)
+    asked = []
+    job = ops.TrashJob([str(b)])
+    job.ask_admin = lambda what: asked.append(what) or True
+    job.elevate = elevate
+    job.run()
+    assert job.state == "done" and job.errors == [] and job.untrashable == []
+    assert asked == [(1, str(folder), "delete")] and state["elevated"] == 1
+    assert not b.exists()
+    assert [i.original for i in job.items] == [str(b)]                        # in Trash, so Undo can restore
+    assert any(os.path.normcase(i.original) == os.path.normcase(str(b)) for i in trash.items())
+    assert isinstance(job.undo, ops.RestoreJob)
+
+
+def test_delete_for_good_rename_and_new_folder_in_a_protected_folder(tmp_path, protected):
+    folder, state, elevate = protected
+    for job, check, verb in [
+        (ops.RenameJob(str(installed(folder, state, "Old.vst3")), "New.vst3"),
+         lambda: (folder / "New.vst3").is_dir() and not (folder / "Old.vst3").exists(), "rename"),
+        (ops.NewFolderJob(str(folder), "Presets"), lambda: (folder / "Presets").is_dir(), "create"),
+        (ops.DeleteJob([str(installed(folder, state))]), lambda: not (folder / "Behemoth Bass.vst3").exists(), "delete"),
+    ]:
+        asked = []
+        job.ask_admin = lambda what, asked=asked: asked.append(what) or True
+        job.elevate = elevate
+        job.run()
+        assert job.state == "done" and job.errors == [], (verb, job.errors)
+        assert check(), verb
+        assert len(asked) == 1 and asked[0][2] == verb
+
+
+def test_declining_leaves_protected_items_alone(tmp_path, protected):
+    folder, state, elevate = protected
+    b = installed(folder, state)
+    job = ops.TrashJob([str(b)])
+    job.ask_admin = lambda what: False
+    job.elevate = elevate
+    job.run()
+    assert b.exists() and state["elevated"] == 0
+    assert job.untrashable == []                       # not offered for deleting for good instead
+    assert job.errors == ["“Behemoth Bass.vst3”: Access is denied"]
+    job = ops.RenameJob(str(b), "Other.vst3")
+    job.ask_admin = lambda what: False
+    job.run()
+    assert job.errors and "Access is denied" in job.errors[0] and b.exists() and not (folder / "Other.vst3").exists()
