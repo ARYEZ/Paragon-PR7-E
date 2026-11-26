@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.7
+
+- Restore from Trash (and Undo of a delete) back into a folder only an administrator may change (Program Files, its
+  VST3 folder) asks for administrator permission once and puts the items back, as Explorer does. A name that's been
+  taken meanwhile gets " (2)", so nothing is overwritten.
+
 ## 1.4.6
 
 - In folders only an administrator may change (Program Files, its VST3 folder), Delete, Delete Permanently, Rename

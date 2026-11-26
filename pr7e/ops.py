@@ -6,6 +6,7 @@ for all). Every job that can be undone leaves `undo`: the job that reverses it, 
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import shutil
 import stat
@@ -526,14 +527,34 @@ class RestoreJob(Job):
         self.restored: list[str] = []
 
     def work(self):
+        refused = []
         for it in self.items:
             self.check()
             try:
                 self.restored.append(trash.restore(it))
                 self.changed.add(os.path.dirname(it.original))
             except OSError as e:
-                self.errors.append(_error(e))
+                refused.append(it) if elevated.needs_admin(e) else self.errors.append(_error(e))
             self.done_items += 1
+        if refused:      # back into a protected folder (Program Files): with administrator rights, as Explorer does
+            ops = []
+            for it in refused:
+                folder = os.path.dirname(it.original)
+                dest = os.path.join(folder, fs.free_name(os.path.basename(it.original), folder, it.is_dir)) \
+                    if os.path.isdir(folder) else it.original
+                ops.append({"what": "restore", "src": it.data, "target": dest, "item": dataclasses.asdict(it)})
+            done = self._admin(ops, "restore", os.path.dirname(refused[0].original))
+            if not done:
+                self.errors += [f"{_quote(it.original)}: Access is denied" for it in refused]
+                if done is None:
+                    self.errors.append("Administrator permission wasn't given, so these weren't restored.")
+            else:
+                for op, err in zip(ops, done):
+                    if err:
+                        self.errors.append(f"{_quote(op['target'])}: {err}")
+                        continue
+                    self.restored.append(op["target"])
+                    self.changed.add(os.path.dirname(op["target"]))
         if self.restored:
             self.undo = TrashJob(self.restored, label=self.undo_label)
 

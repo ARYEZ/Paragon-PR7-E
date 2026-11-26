@@ -76,6 +76,9 @@ def perform(ops: list[dict]) -> list[str | None]:
             elif op["what"] == "trash":                 # to the Recycle Bin (the same user's: same SID)
                 from . import trash
                 trash.send(src)
+            elif op["what"] == "restore":               # out of the Recycle Bin, to the name worked out already
+                from . import trash
+                trash.restore(trash.TrashItem(**op["item"]), target=target)
             elif op["what"] == "delete":
                 _remove(src)
             elif op["what"] == "rename":

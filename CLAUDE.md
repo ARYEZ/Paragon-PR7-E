@@ -82,7 +82,8 @@ Linux for tests. The owner writes Python; explain the why of changes.
   `_ask("admin")`, Explorer's wording), then `job.elevate` = `run_elevated` starts PR7-E with ShellExecuteEx "runas" as
   `--elevated-ops IN OUT`, which runs `perform`. Replace happens at copy time (so a refused replace can be redone); a
   move between drives that hits a refusal becomes one move op (the original is never deleted first). Trash / Delete /
-  Rename / New Folder use the same `Job._admin` (ops trash, delete, rename, mkdir; `trash.may_delete` probes DELETE
+  Rename / New Folder / Restore use the same `Job._admin` (ops trash, delete, rename, mkdir, restore: the name
+  is worked out first, the TrashItem travels as a dict; `trash.may_delete` probes DELETE
   before SHFileOperationW, whose own elevation box can't work from PR7-E). The two processes share
   `elevated.exchange_folder()` (never mkdtemp: its 0o700 ACL is OWNER RIGHTS, unreadable across the UAC split);
   unreadable results -> `check_done` reads the disk. Tests:

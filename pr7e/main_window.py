@@ -2163,6 +2163,7 @@ class MainWindow(QMainWindow):
                 "delete": ("to delete " + ("this item" if count == 1 else "these items"), f"delete {what}"),
                 "rename": ("to rename this item", "rename it"),
                 "create": ("to create a folder here", "create the folder"),
+                "restore": ("to restore to this folder", f"restore {what}"),
             }[verb]
             dlg = dialogs.ConfirmDialog("Permission", f"You\u2019ll need to provide administrator permission {heading}",
                                         f"\u201c{place}\u201d is protected by Windows. Continue to {action} with "

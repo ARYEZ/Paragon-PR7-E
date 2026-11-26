@@ -267,3 +267,65 @@ def test_declining_leaves_protected_items_alone(tmp_path, protected):
     job.ask_admin = lambda what: False
     job.run()
     assert job.errors and "Access is denied" in job.errors[0] and b.exists() and not (folder / "Other.vst3").exists()
+
+
+def trashed(folder, state, elevate, name="Behemoth Bass.vst3"):
+    """A plugin deleted from the protected folder to Trash (with administrator rights, as the user would)."""
+    b = installed(folder, state, name)
+    job = ops.TrashJob([str(b)])
+    job.ask_admin = lambda what: True
+    job.elevate = elevate
+    job.run()
+    assert not b.exists() and len(job.items) == 1
+    return b, job
+
+
+def test_restore_into_a_protected_folder_asks_once(tmp_path, protected):
+    from pr7e import trash
+    folder, state, elevate = protected
+    b, deleted = trashed(folder, state, elevate)
+    asked = []
+    job = ops.RestoreJob(deleted.items)
+    job.ask_admin = lambda what: asked.append(what) or True
+    job.elevate = elevate
+    job.run()
+    assert job.errors == [] and job.restored == [str(b)]
+    assert asked == [(1, str(folder), "restore")]
+    assert (b / "Contents" / "moduleinfo.json").read_text() == "{}"
+    assert not any(os.path.normcase(i.original) == os.path.normcase(str(b)) for i in trash.items())
+    assert isinstance(job.undo, ops.TrashJob)                 # and it can be deleted again (Redo)
+
+
+def test_undo_of_a_delete_in_a_protected_folder(tmp_path, protected):
+    folder, state, elevate = protected
+    b, deleted = trashed(folder, state, elevate)
+    undo = deleted.undo                                        # Ctrl+Z after the delete: a RestoreJob
+    undo.ask_admin = lambda what: True
+    undo.elevate = elevate
+    undo.run()
+    assert undo.errors == [] and b.is_dir()
+
+
+def test_restore_never_overwrites_a_plugin_installed_meanwhile(tmp_path, protected):
+    folder, state, elevate = protected
+    b, deleted = trashed(folder, state, elevate)
+    installed(folder, state)                                   # a new "Behemoth Bass.vst3" there now
+    job = ops.RestoreJob(deleted.items)
+    job.ask_admin = lambda what: True
+    job.elevate = elevate
+    job.run()
+    assert job.errors == [] and job.restored == [str(folder / "Behemoth Bass.vst3 (2)")]
+    assert (folder / "Behemoth Bass.vst3 (2)" / "Contents" / "moduleinfo.json").exists() and b.is_dir()
+
+
+def test_declining_a_restore_keeps_it_in_trash(tmp_path, protected):
+    from pr7e import trash
+    folder, state, elevate = protected
+    b, deleted = trashed(folder, state, elevate)
+    job = ops.RestoreJob(deleted.items)
+    job.ask_admin = lambda what: False
+    job.elevate = elevate
+    job.run()
+    assert not b.exists() and job.restored == []
+    assert job.errors == ["“Behemoth Bass.vst3”: Access is denied"]
+    assert any(os.path.normcase(i.original) == os.path.normcase(str(b)) for i in trash.items())
