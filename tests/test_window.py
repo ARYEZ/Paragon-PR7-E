@@ -1128,7 +1128,7 @@ def test_location_bar_names_are_in_the_current_folder(win, home):
     assert os.path.normcase(w.tab.location) == os.path.normcase(str(home / "Documents"))
     w.headerbar.location.setText("no such folder")
     w._location_entered()
-    assert w.messages and str(home / "Documents" / "no such folder") in str(w.messages[-1])
+    assert w.messages and str(home / "Documents" / "no such folder") in w.messages[-1][1]   # the text, not its repr
 
 
 def test_location_bar_runs_programs_in_the_current_folder(win, home, monkeypatch, tmp_path):
