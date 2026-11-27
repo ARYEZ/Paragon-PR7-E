@@ -1059,10 +1059,17 @@ def test_family_links(win, home, monkeypatch):
     assert "Edit Tags in PR7-L" not in items
 
 
-def test_family_lookup_is_windows_only():
+def test_family_lookup_on_linux_uses_the_launchers(tmp_path, monkeypatch):
+    """PR7-OS installs each app as /usr/bin/pr7-<x>: on Linux the family is found on the PATH."""
     from pr7e import family
     if sys.platform != "win32":
-        assert family.find("PR7-W") is None and not family.pr7e_for_folders()
+        monkeypatch.setenv("PATH", str(tmp_path))
+        assert family.find("PR7-W") is None
+        launcher = tmp_path / "pr7-w"
+        launcher.write_text("#!/bin/sh\n")
+        launcher.chmod(0o755)
+        assert family.find("PR7-W") == str(launcher)
+        assert family.find("PR7-HX") is None                  # two letters: pr7-hx
     assert family.find("not-a-family-app") is None
 
 
