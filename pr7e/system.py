@@ -74,6 +74,46 @@ def terminal(folder: str) -> None:
                 return
 
 
+def split_command(line: str) -> list[str]:
+    """A typed command line into its words: spaces separate, double quotes keep spaces in ("C:\\My Tools\\x.exe")."""
+    words, cur, quoted = [], "", False
+    for ch in line:
+        if ch == '"':
+            quoted = not quoted
+        elif ch.isspace() and not quoted:
+            if cur:
+                words.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur:
+        words.append(cur)
+    return words
+
+
+def find_program(name: str) -> str | None:
+    """A program the way Explorer's address bar finds it: the PATH (with Windows' .exe, .cmd ... endings)."""
+    return shutil.which(name)
+
+
+def run_command(line: str, folder: str) -> bool:
+    """Explorer's address bar: a program typed there starts in the folder shown ("cmd" opens a Command Prompt there).
+    False when the first word isn't a program."""
+    words = split_command(line)
+    if not words:
+        return False
+    exe = find_program(words[0])
+    if exe is None:
+        return False
+    args = [exe] + words[1:]
+    name = exe.replace("\\", "/").rsplit("/", 1)[-1]           # Windows' backslashes on any system
+    if os.path.splitext(name)[0].lower() == "wt" and "-d" not in words:
+        args = [exe, "-d", folder] + words[1:]          # Windows Terminal ignores the starting folder otherwise
+    kwargs = {"creationflags": subprocess.CREATE_NEW_CONSOLE} if WINDOWS else {}
+    subprocess.Popen(args, cwd=folder, **kwargs)        # a console program gets its own window, as from Explorer
+    return True
+
+
 # --------------------------------------------------------------------------- Properties' Permissions
 def owner(path: str) -> str:
     """Who owns the file ("PC\\me"), from its security descriptor on Windows; the user name elsewhere."""

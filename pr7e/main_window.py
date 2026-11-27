@@ -869,6 +869,17 @@ class MainWindow(QMainWindow):
             return
         if text.lower().startswith("file:"):
             text = os.path.normpath(QUrl(text).toLocalFile())
+        here = self.tab.location
+        local_here = here not in places.SPECIAL and not servers.is_remote(here) and os.path.isdir(here)
+        if local_here and not os.path.isabs(text) and not places.share_path(text):
+            # a name typed here means a name in this folder (Files), not in PR7-E's own program folder
+            inside = os.path.normpath(os.path.join(here, text))
+            if os.path.exists(inside):
+                text = inside
+            elif system.run_command(text, here):
+                return                              # Explorer's address bar: "cmd", "powershell", "notepad x.txt"
+            else:
+                text = inside
         if os.path.isfile(text):
             self.go(os.path.dirname(text))
             self.tab.select_paths([text])

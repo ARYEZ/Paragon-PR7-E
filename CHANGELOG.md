@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.8
+
+- The location bar (Ctrl+L): a name typed there is a name in the folder shown, as in Files ("Documents" in your home
+  folder opens it). Before, it was looked up in PR7-E's own program folder ("…\\Programs\\PR7-E\\cmd can't be found").
+- Like Explorer's address bar, a program typed there starts in the folder shown: "cmd", "powershell", "wt" (Windows
+  Terminal, given the folder), "notepad notes.txt".
+
 ## 1.4.7
 
 - Restore from Trash (and Undo of a delete) back into a folder only an administrator may change (Program Files, its

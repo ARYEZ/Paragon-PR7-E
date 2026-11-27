@@ -1117,3 +1117,43 @@ def test_other_jobs_keep_their_watches(win, home):
     w.runner.wait()
     QApplication.processEvents()
     assert set(w.watcher.directories()) >= before and not w.unwatched
+
+
+def test_location_bar_names_are_in_the_current_folder(win, home):
+    """A name typed in the location bar is a name in the folder shown (Files), not in PR7-E's program folder."""
+    w = win
+    w.go(str(home))
+    w.headerbar.location.setText("Documents")
+    w._location_entered()
+    assert os.path.normcase(w.tab.location) == os.path.normcase(str(home / "Documents"))
+    w.headerbar.location.setText("no such folder")
+    w._location_entered()
+    assert w.messages and str(home / "Documents" / "no such folder") in str(w.messages[-1])
+
+
+def test_location_bar_runs_programs_in_the_current_folder(win, home, monkeypatch, tmp_path):
+    """Explorer's address bar: "cmd" (any program on the PATH) starts in the folder shown, with its arguments."""
+    from pr7e import system
+    w = win
+    w.go(str(home / "Music"))
+    out = tmp_path / "ran.txt"
+    monkeypatch.setattr(system, "find_program", lambda name: sys.executable if name == "pyprog" else None)
+    w.headerbar.location.setText(f'pyprog -c "import os,sys; open(sys.argv[1], \'w\').write(os.getcwd())" {out}')
+    w._location_entered()
+    deadline = time.time() + 20
+    while not (out.exists() and out.read_text()) and time.time() < deadline:
+        time.sleep(0.1)
+    assert os.path.normcase(out.read_text()) == os.path.normcase(str(home / "Music"))
+    assert os.path.normcase(w.tab.location) == os.path.normcase(str(home / "Music"))   # stays where it was
+    assert not w.messages
+
+
+def test_windows_terminal_gets_the_folder(win, home, monkeypatch):
+    from pr7e import system
+    started = []
+    monkeypatch.setattr(system, "find_program", lambda name: r"C:\Apps\wt.exe" if name == "wt" else None)
+    monkeypatch.setattr(system.subprocess, "Popen", lambda args, **k: started.append((args, k.get("cwd"))))
+    assert system.run_command("wt", str(home)) is True
+    assert started == [([r"C:\Apps\wt.exe", "-d", str(home)], str(home))]
+    assert system.run_command("not-a-program-here", str(home)) is False
+    assert system.split_command('notepad "C:\\My Files\\a b.txt" x') == ["notepad", "C:\\My Files\\a b.txt", "x"]
